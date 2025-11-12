@@ -81,3 +81,7 @@ temp/
 screenshots/
 recordings/
 
+#build artifacts
+build/
+
+
