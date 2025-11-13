@@ -293,16 +293,28 @@ Now that the image is in ECR, create the Lambda function:
 
 ```json
 {
-  "action": "execute_agent",
-  "agent_id": "gpt4",
-  "task": "Go to example.com and find the heading",
-  "session_id": "test-123"
+  "body": {
+    "action": "execute",
+    "agent_config": {
+      "agent_id": "gpt4-agent",
+      "model": "gpt-4-turbo",
+      "name": "GPT-4 Web Agent"
+    },
+    "prompt": "Go to example.com and find the main heading text",
+    "constraints": {
+      "domains": ["example.com"]
+    }
+  }
 }
 ```
 
+**Note:** Make sure you've added `OPENAI_API_KEY` to Lambda environment variables!
+
 4. Click **"Test"**
-5. Wait 30-60 seconds
-6. You should see agent execution results with screenshots and tool calls
+5. Wait 30-60 seconds (first run may take longer as Playwright initializes)
+6. You should see agent execution results with:
+   - `status`: "success"
+   - `result`: Object with screenshots, tool calls, and output
 
 ---
 
