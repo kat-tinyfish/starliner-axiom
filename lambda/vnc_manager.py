@@ -79,13 +79,6 @@ class VNCManager:
             os.environ['DISPLAY'] = self.display
             logger.info(f"Set DISPLAY={self.display}")
             
-            # Start fluxbox window manager (lightweight)
-            logger.info("Starting fluxbox window manager")
-            subprocess.Popen([
-                'fluxbox', '-display', self.display
-            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            time.sleep(1)
-            
             # Start websockify for web access
             logger.info(f"Starting websockify on port {self.novnc_port}")
             self.websockify_process = subprocess.Popen([
