@@ -44,8 +44,28 @@ phases:
             xdg-utils \
             && dnf clean all
 
+        # Install VNC Server and Xvfb for browser streaming
+        RUN dnf install -y \
+            xorg-x11-server-Xvfb \
+            x11vnc \
+            fluxbox \
+            git \
+            && dnf clean all
+
+        # Install noVNC for web access
+        RUN git clone https://github.com/novnc/noVNC.git /opt/noVNC && \
+            cd /opt/noVNC && \
+            git checkout v1.4.0 && \
+            ln -s /opt/noVNC/vnc.html /opt/noVNC/index.html
+
+        # Configure VNC environment variables
+        ENV DISPLAY=:99
+        ENV VNC_PORT=5900
+        ENV NOVNC_PORT=6080
+        RUN mkdir -p ~/.vnc
+
         # Copy function code
-        COPY handler.py agent_executor.py ${LAMBDA_TASK_ROOT}/
+        COPY handler.py agent_executor.py vnc_manager.py ${LAMBDA_TASK_ROOT}/
 
         # Install Python dependencies
         COPY requirements.txt .
