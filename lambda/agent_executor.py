@@ -66,11 +66,21 @@ class AgentExecutor:
                 has_display = os.environ.get('DISPLAY') is not None
                 
                 # Launch browser with appropriate options for Lambda
-                # If VNC is available, launch in headed mode to connect to X display
-                # Otherwise, use headless mode
-                self.browser = await p.chromium.launch(
-                    headless=not has_display,  # Use headed mode when VNC is available
-                    args=[
+                # Different args for headed (VNC) vs headless mode
+                if has_display:
+                    # Headed mode for VNC - minimal args for X11 compatibility
+                    launch_args = [
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--no-first-run',
+                        '--disable-extensions',
+                        '--disable-software-rasterizer',
+                        '--disable-dev-tools'
+                    ]
+                else:
+                    # Headless mode - more aggressive optimizations
+                    launch_args = [
                         '--no-sandbox',
                         '--disable-setuid-sandbox',
                         '--disable-dev-shm-usage',
@@ -80,6 +90,10 @@ class AgentExecutor:
                         '--single-process',
                         '--disable-extensions'
                     ]
+                
+                self.browser = await p.chromium.launch(
+                    headless=not has_display,
+                    args=launch_args
                 )
                 
                 # Create browser context with reasonable defaults
