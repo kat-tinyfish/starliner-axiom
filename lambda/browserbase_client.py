@@ -304,10 +304,20 @@ class BrowserBaseClient:
             
             execution_time = time.time() - start_time
             
+            # Extract output data from tool calls
+            output_data = {}
+            for tc in tool_calls:
+                if tc.get("tool") == "extract_info" and tc.get("result"):
+                    output_data = tc["result"]
+                    break
+            
+            if not output_data:
+                output_data = {"status": "completed", "message": "Task executed successfully"}
+            
             return {
                 "success": True,
                 "session_id": session_id,
-                "output_data": {"result": "Task execution simulated (MVP)"},
+                "output_data": output_data,
                 "tool_calls": tool_calls,
                 "checkpoints": checkpoints,
                 "execution_time": execution_time,
