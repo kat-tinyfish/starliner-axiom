@@ -109,8 +109,18 @@ class AgentExecutor:
                 print("✅ Browser context created")
                 
                 print("📄 Creating new page...")
-                self.page = await context.new_page()
-                print("✅ Page created successfully")
+                try:
+                    self.page = await asyncio.wait_for(context.new_page(), timeout=10.0)
+                    print("✅ Page created successfully")
+                except asyncio.TimeoutError:
+                    print("❌ Page creation timed out after 10s")
+                    raise Exception("Page creation timeout - browser may have crashed")
+                except Exception as page_error:
+                    print(f"❌ Page creation failed: {str(page_error)}")
+                    print(f"   Error type: {type(page_error).__name__}")
+                    import traceback
+                    traceback.print_exc()
+                    raise
                 
                 self._add_checkpoint("browser_ready", "Browser initialized successfully")
                 
