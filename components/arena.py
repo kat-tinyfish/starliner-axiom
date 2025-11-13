@@ -6,6 +6,9 @@ import streamlit as st
 from typing import Optional, Tuple
 import asyncio
 import time
+import base64
+from io import BytesIO
+from PIL import Image
 
 
 def render_arena():
@@ -330,15 +333,31 @@ def render_agent_panel(title: str, agent_status: dict, agent):
         st.markdown("**🖥️ Browser Session**")
         st.markdown("---")
         
-        # Browser iframe/VNC viewer
-        browser_url = agent.get_browser_session_url() if agent else None
-        if browser_url:
-            # TODO: Embed actual VNC viewer here
-            st.components.v1.iframe(browser_url, height=400, scrolling=True)
+        # Display latest screenshot
+        result = agent.result if agent and hasattr(agent, 'result') else None
+        screenshots = result.screenshots if result and hasattr(result, 'screenshots') else []
+        
+        if screenshots:
+            # Get latest screenshot
+            latest_screenshot = screenshots[-1]
+            
+            try:
+                screenshot_bytes = base64.b64decode(latest_screenshot['data'])
+                screenshot_image = Image.open(BytesIO(screenshot_bytes))
+                
+                # Display screenshot
+                st.image(screenshot_image, use_column_width=True)
+                
+                # Show metadata
+                elapsed = latest_screenshot.get('elapsed', 0)
+                index = latest_screenshot.get('index', 0)
+                st.caption(f"Screenshot {index + 1} • {elapsed:.1f}s elapsed")
+            except Exception as e:
+                st.error(f"Failed to load screenshot: {str(e)}")
         else:
             # Placeholder for browser session
-            st.info("🔧 Browser session will appear here when race starts")
-            st.caption("VNC streaming integration in progress")
+            st.info("📸 Browser screenshots will appear here when race starts")
+            st.caption("Updates every 2 seconds")
         
         # Progress indicator below browser
         st.markdown("**Progress:**")
