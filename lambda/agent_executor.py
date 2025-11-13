@@ -76,17 +76,29 @@ class AgentExecutor:
                 print("🎬 Launching browser in headless mode (screenshot polling enabled)")
                 
                 # Launch with minimal args - --single-process and --no-zygote can cause crashes
-                self.browser = await p.chromium.launch(
-                    headless=True,
-                    args=[
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--disable-gpu'
-                    ]
-                )
-                
-                print(f"✅ Browser launched successfully")
+                try:
+                    self.browser = await asyncio.wait_for(
+                        p.chromium.launch(
+                            headless=True,
+                            args=[
+                                '--no-sandbox',
+                                '--disable-setuid-sandbox',
+                                '--disable-dev-shm-usage',
+                                '--disable-gpu'
+                            ]
+                        ),
+                        timeout=30.0  # 30 second timeout
+                    )
+                    print(f"✅ Browser launched successfully")
+                except asyncio.TimeoutError:
+                    print(f"❌ Browser launch timed out after 30s")
+                    raise Exception("Browser launch timeout - Chromium may not be compatible with this Lambda environment")
+                except Exception as launch_error:
+                    print(f"❌ Browser launch failed: {str(launch_error)}")
+                    print(f"   Error type: {type(launch_error).__name__}")
+                    import traceback
+                    traceback.print_exc()
+                    raise
                 
                 # Create browser context with reasonable defaults
                 print("🔧 Creating browser context...")
