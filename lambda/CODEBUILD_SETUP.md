@@ -27,10 +27,15 @@ git push origin main
 
 ### 2.1 Navigate to CodeBuild
 
+⚠️ **IMPORTANT**: Make sure you're in the **us-east-1** region (top right of AWS Console)
+
 1. Go to AWS Console: https://console.aws.amazon.com/
-2. Search for "CodeBuild" in the search bar
-3. Click **"CodeBuild"**
-4. Click **"Create build project"**
+2. **Check region**: Top-right dropdown should say "N. Virginia" (us-east-1)
+3. Search for "CodeBuild" in the search bar
+4. Click **"CodeBuild"**
+5. Click **"Create build project"**
+
+Or go directly to: https://us-east-1.console.aws.amazon.com/codesuite/codebuild/projects
 
 ### 2.2 Project Configuration
 
@@ -40,9 +45,21 @@ git push origin main
 
 ### 2.3 Source
 
+⚠️ **CRITICAL**: Use GitHub OAuth, NOT AWS CodeConnections
+
 - **Source provider:** GitHub
-- Click **"Connect to GitHub"** (if not already connected)
-  - Authorize AWS CodeBuild to access your GitHub account
+- You'll see options like:
+  - "Connect using OAuth" OR
+  - "GitHub credentials" OR  
+  - "AWS CodeConnections"
+  
+  **→ Choose the OAuth/GitHub credentials option (NOT CodeConnections!)**
+
+- Click **"Connect to GitHub"** button
+  - A GitHub authorization popup will appear
+  - Click "Authorize AWS CodeBuild" in the popup
+  - This connects CodeBuild directly to your GitHub account
+
 - **Repository:** Select "Repository in my GitHub account"
 - **GitHub repository:** `kat-tinyfish/starliner-axiom`
 - **Source version:** `main` (or leave blank for default branch)
@@ -309,6 +326,26 @@ streamlit run app.py
 ---
 
 ## Troubleshooting
+
+### Build Fails: "Access denied to connection" or "Failed to get access token"
+**Problem:** CodeBuild is trying to use AWS CodeConnections instead of GitHub OAuth
+
+**Solution:**
+1. Delete the CodeBuild project
+2. Recreate it in **us-east-1** region
+3. When configuring Source:
+   - Choose **"GitHub"** as source provider
+   - Use **"Connect using OAuth"** or **"GitHub credentials"**
+   - **DO NOT** select "AWS CodeConnections"
+   - Click "Connect to GitHub" and authorize in the popup
+4. Continue with the rest of the setup
+
+### Wrong Region: Build appears in us-west-1 instead of us-east-1
+**Solution:**
+- Make sure you're in us-east-1 region when creating the project
+- Check the region dropdown (top-right) says "N. Virginia"
+- Or use this direct link: https://us-east-1.console.aws.amazon.com/codesuite/codebuild/projects
+- Your ECR repository is in us-east-1, so CodeBuild must be there too
 
 ### Webhook Creation Failed: "CodeBuild is not authorized to perform: sts:AssumeRole"
 **Solution 1 (Recommended):** Disable webhooks
