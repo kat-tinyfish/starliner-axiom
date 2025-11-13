@@ -71,6 +71,7 @@ class BaseAgent(ABC):
         self._current_checkpoint = None
         self._tool_calls = []
         self._checkpoints = []
+        self._screenshots = []  # Track screenshots during execution
     
     @abstractmethod
     async def execute(self, prompt: str, constraints: Optional[Dict[str, Any]] = None) -> AgentResult:
@@ -91,15 +92,14 @@ class BaseAgent(ABC):
         """Stop the current execution."""
         pass
     
-    @abstractmethod
     def get_browser_session_url(self) -> str:
         """
-        Get the URL for the VNC stream of the browser session.
+        Get the URL for the browser session (deprecated - using screenshot polling now).
         
         Returns:
-            URL to the VNC stream
+            Placeholder URL (VNC streaming has been replaced with screenshot polling)
         """
-        pass
+        return f"#agent-{self.agent_id}"  # Placeholder - not used with screenshot polling
     
     def get_current_checkpoint(self) -> Optional[Checkpoint]:
         """Get the current checkpoint."""
@@ -124,13 +124,24 @@ class BaseAgent(ABC):
         self._checkpoints.append(checkpoint)
         self._current_checkpoint = checkpoint
     
-    def _add_tool_call(self, tool_name: str, parameters: Dict[str, Any], 
-                       status: str = "in_progress") -> ToolCall:
-        """Add a tool call to the execution history."""
+    def _add_tool_call(self, tool: str = None, args: Dict[str, Any] = None, 
+                       status: str = "in_progress", 
+                       tool_name: str = None, parameters: Dict[str, Any] = None) -> ToolCall:
+        """
+        Add a tool call to the execution history.
+        
+        Supports both naming conventions:
+        - tool, args (new agents)
+        - tool_name, parameters (legacy)
+        """
+        # Support both parameter names
+        final_tool_name = tool or tool_name or "unknown"
+        final_parameters = args if args is not None else (parameters or {})
+        
         tool_call = ToolCall(
             timestamp=datetime.now(),
-            tool_name=tool_name,
-            parameters=parameters,
+            tool_name=final_tool_name,
+            parameters=final_parameters,
             status=status
         )
         self._tool_calls.append(tool_call)
