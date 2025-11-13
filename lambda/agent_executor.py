@@ -63,7 +63,12 @@ class AgentExecutor:
             
             async with async_playwright() as p:
                 # Check if VNC is available (DISPLAY env var set)
-                has_display = os.environ.get('DISPLAY') is not None
+                display_value = os.environ.get('DISPLAY')
+                has_display = display_value is not None
+                
+                # Log display status for debugging
+                print(f"DISPLAY environment variable: {display_value}")
+                print(f"Launching browser in {'headed' if has_display else 'headless'} mode")
                 
                 # Launch browser with appropriate options for Lambda
                 # Different args for headed (VNC) vs headless mode
