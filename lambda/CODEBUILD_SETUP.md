@@ -47,6 +47,11 @@ git push origin main
 - **GitHub repository:** `kat-tinyfish/starliner-axiom`
 - **Source version:** `main` (or leave blank for default branch)
 
+**IMPORTANT - Webhooks:**
+- Scroll down to **"Primary source webhook events"**
+- **UNCHECK** "Rebuild every time a code change is pushed to this repository"
+- (We'll trigger builds manually - avoids webhook setup issues)
+
 ### 2.4 Environment
 
 - **Environment image:** Managed image
@@ -59,7 +64,7 @@ git push origin main
   - Check the box "Enable this flag if you want to build Docker images or want your builds to get elevated privileges"
 - **Service role:** 
   - Select "New service role"
-  - **Role name:** `codebuild-web-agent-executor-builder-service-role`
+  - **Role name:** `codebuild-web-agent-executor-builder-service-role-1`
 
 ### 2.5 Buildspec
 
@@ -304,6 +309,31 @@ streamlit run app.py
 ---
 
 ## Troubleshooting
+
+### Webhook Creation Failed: "CodeBuild is not authorized to perform: sts:AssumeRole"
+**Solution 1 (Recommended):** Disable webhooks
+- When creating the project, uncheck "Rebuild every time a code change is pushed"
+- Trigger builds manually by clicking "Start build"
+
+**Solution 2:** Fix the trust policy
+1. Go to IAM → Roles → Find your CodeBuild service role
+2. Click "Trust relationships" → "Edit trust policy"
+3. Ensure it has:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "codebuild.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+```
+4. Save and retry creating the CodeBuild project
 
 ### Build Fails: "Privileged flag not enabled"
 - Edit CodeBuild project → Environment → Enable "Privileged" flag
