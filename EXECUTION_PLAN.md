@@ -538,9 +538,9 @@ AGENTS = {
         "api_key_env": "OPENAI_API_KEY"
     },
     "claude-agent": {
-        "name": "Claude 3.5 Sonnet Agent",
+        "name": "Claude Sonnet 4.5 Agent",
         "api": "anthropic",
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-5",
         "api_key_env": "ANTHROPIC_API_KEY"
     },
     "gemini-agent": {
