@@ -358,9 +358,8 @@ def render_agent_panel(title: str, agent_status: dict, agent):
         st.markdown("**🖥️ Browser Session**")
         st.markdown("---")
         
-        # Display latest screenshot
-        result = agent.result if agent and hasattr(agent, 'result') else None
-        screenshots = result.screenshots if result and hasattr(result, 'screenshots') else []
+        # Display latest screenshot from agent_status
+        screenshots = agent_status.get("screenshots", [])
         
         if screenshots:
             # Get latest screenshot

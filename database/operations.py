@@ -293,13 +293,88 @@ class DatabaseOperations:
             List of leaderboard entries sorted by win rate
         """
         try:
+            # Try cached leaderboard first
             response = self.client.table('leaderboard_cache')\
                 .select('*, agents(name, display_name)')\
                 .order('win_rate', desc=True)\
                 .execute()
-            return response.data
+            
+            if response.data:
+                return response.data
+            
+            # Fallback: Calculate leaderboard from raw data
+            print("Leaderboard cache empty, calculating from raw data...")
+            return self._calculate_leaderboard_from_raw_data()
         except Exception as e:
             print(f"Error fetching leaderboard: {str(e)}")
+            # Try calculating from raw data as fallback
+            try:
+                return self._calculate_leaderboard_from_raw_data()
+            except:
+                return []
+    
+    def _calculate_leaderboard_from_raw_data(self) -> List[Dict[str, Any]]:
+        """
+        Calculate leaderboard statistics from user_preferences and agent_executions.
+        Used as fallback when leaderboard_cache is empty or triggers aren't set up.
+        """
+        try:
+            # Get all agents
+            agents_response = self.client.table('agents').select('*').execute()
+            agents = {agent['id']: agent for agent in agents_response.data}
+            
+            # Get all user preferences (votes)
+            prefs_response = self.client.table('user_preferences').select('*').execute()
+            
+            # Initialize stats for each agent
+            stats = {}
+            for agent_id, agent in agents.items():
+                stats[agent_id] = {
+                    'agent_id': agent_id,
+                    'agent_name': agent['display_name'],
+                    'total_races': 0,
+                    'wins': 0,
+                    'losses': 0,
+                    'win_rate': 0.0,
+                    'avg_execution_time': 0.0
+                }
+            
+            # Count wins for each agent
+            for pref in prefs_response.data:
+                winner_id = pref['preferred_agent_id']
+                if winner_id in stats:
+                    stats[winner_id]['wins'] += 1
+                    stats[winner_id]['total_races'] += 1
+            
+            # Get execution times
+            exec_response = self.client.table('agent_executions').select('agent_id, execution_time').execute()
+            exec_times = {}
+            exec_counts = {}
+            for exec in exec_response.data:
+                agent_id = exec['agent_id']
+                exec_time = exec.get('execution_time', 0)
+                if agent_id not in exec_times:
+                    exec_times[agent_id] = 0
+                    exec_counts[agent_id] = 0
+                exec_times[agent_id] += exec_time
+                exec_counts[agent_id] += 1
+            
+            # Calculate averages and win rates
+            for agent_id in stats:
+                if stats[agent_id]['total_races'] > 0:
+                    stats[agent_id]['win_rate'] = stats[agent_id]['wins'] / stats[agent_id]['total_races']
+                if agent_id in exec_counts and exec_counts[agent_id] > 0:
+                    stats[agent_id]['avg_execution_time'] = exec_times[agent_id] / exec_counts[agent_id]
+            
+            # Convert to list and sort by win rate
+            leaderboard = list(stats.values())
+            leaderboard.sort(key=lambda x: (x['win_rate'], x['wins']), reverse=True)
+            
+            return leaderboard
+        except Exception as e:
+            print(f"Error calculating leaderboard from raw data: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return []
     
     def get_agent_stats(self, agent_id: str) -> Optional[Dict[str, Any]]:

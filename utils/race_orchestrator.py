@@ -152,12 +152,14 @@ class RaceOrchestrator:
                 "checkpoints": self.agent_a.get_all_checkpoints() if self.agent_a else [],
                 "tool_calls": self.agent_a.get_tool_calls() if self.agent_a else [],
                 "current_checkpoint": self.agent_a.get_current_checkpoint() if self.agent_a else None,
+                "screenshots": self.result_a.screenshots if self.result_a and hasattr(self.result_a, 'screenshots') and self.result_a.screenshots else [],
             },
             "agent_b": {
                 "name": self.agent_b.name if self.agent_b else None,
                 "checkpoints": self.agent_b.get_all_checkpoints() if self.agent_b else [],
                 "tool_calls": self.agent_b.get_tool_calls() if self.agent_b else [],
                 "current_checkpoint": self.agent_b.get_current_checkpoint() if self.agent_b else None,
+                "screenshots": self.result_b.screenshots if self.result_b and hasattr(self.result_b, 'screenshots') and self.result_b.screenshots else [],
             }
         }
         return status

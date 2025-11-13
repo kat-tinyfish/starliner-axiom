@@ -46,10 +46,12 @@ def render_leaderboard():
         }
         
         for entry in leaderboard:
-            # Get agent info
+            # Get agent info (handle both cached and calculated leaderboard formats)
             agents = entry.get('agents', {})
-            if isinstance(agents, dict):
+            if isinstance(agents, dict) and agents:
                 agent_name = agents.get('display_name', 'Unknown')
+            elif 'agent_name' in entry:
+                agent_name = entry['agent_name']
             else:
                 agent_name = 'Unknown'
             
