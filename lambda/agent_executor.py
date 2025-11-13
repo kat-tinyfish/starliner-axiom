@@ -7,6 +7,7 @@ including navigation, interaction, and data extraction.
 
 import asyncio
 import time
+import os
 from typing import Dict, Any, Optional, List
 from playwright.async_api import async_playwright, Browser, Page, TimeoutError as PlaywrightTimeout
 import json
@@ -61,9 +62,14 @@ class AgentExecutor:
             self._add_checkpoint("initialization", "Starting browser and initializing agent")
             
             async with async_playwright() as p:
+                # Check if VNC is available (DISPLAY env var set)
+                has_display = os.environ.get('DISPLAY') is not None
+                
                 # Launch browser with appropriate options for Lambda
+                # If VNC is available, launch in headed mode to connect to X display
+                # Otherwise, use headless mode
                 self.browser = await p.chromium.launch(
-                    headless=True,
+                    headless=not has_display,  # Use headed mode when VNC is available
                     args=[
                         '--no-sandbox',
                         '--disable-setuid-sandbox',

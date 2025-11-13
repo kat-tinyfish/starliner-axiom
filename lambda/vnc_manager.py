@@ -68,12 +68,16 @@ class VNCManager:
             # Wait for Xvnc to initialize
             time.sleep(2)
             
-            # Check if Xvnc started successfully
+            # Check if Xvnc started successfully (process should still be running)
             if self.vnc_process.poll() is not None:
+                # Process died - this is a real failure
                 stderr_output = self.vnc_process.stderr.read().decode('utf-8', errors='ignore')
-                logger.error(f"Xvnc failed to start: {stderr_output}")
+                logger.error(f"Xvnc process died during startup: {stderr_output}")
                 self.stop()
                 return False
+            
+            # Xvnc is running (may have warnings in stderr, but that's OK)
+            logger.info("Xvnc process is running successfully")
             
             # Set DISPLAY environment variable
             os.environ['DISPLAY'] = self.display
@@ -91,12 +95,16 @@ class VNCManager:
             # Wait for websockify to initialize
             time.sleep(1)
             
-            # Check if websockify started successfully
+            # Check if websockify started successfully (process should still be running)
             if self.websockify_process.poll() is not None:
+                # Process died - this is a real failure
                 stderr_output = self.websockify_process.stderr.read().decode('utf-8', errors='ignore')
-                logger.error(f"websockify failed to start: {stderr_output}")
+                logger.error(f"websockify process died during startup: {stderr_output}")
                 self.stop()
                 return False
+            
+            # websockify is running
+            logger.info("websockify process is running successfully")
             
             self._started = True
             logger.info("✅ All VNC services started successfully (TigerVNC + websockify)")
