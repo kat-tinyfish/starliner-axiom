@@ -126,7 +126,7 @@ def render_control_buttons(prompt: str, agent_a: str, agent_b: str,
     race_started = False
     
     with col1:
-        if st.button("▶️ Start Race", use_container_width=True, type="primary", disabled=not can_start):
+        if st.button("▶️ Start Race", width="stretch"=True, type="primary", disabled=not can_start):
             if can_start:
                 # Initialize race orchestrator
                 from utils.race_orchestrator import RaceOrchestrator
@@ -183,14 +183,14 @@ def render_control_buttons(prompt: str, agent_a: str, agent_b: str,
                     return False
     
     with col2:
-        if st.button("⏹️ Stop", use_container_width=True, disabled=not st.session_state.race_active):
+        if st.button("⏹️ Stop", width="stretch"=True, disabled=not st.session_state.race_active):
             if st.session_state.race_orchestrator:
                 st.session_state.race_orchestrator.stop_race()
             st.session_state.race_active = False
             st.info("Race stopped")
     
     with col3:
-        if st.button("🔄 Reset", use_container_width=True):
+        if st.button("🔄 Reset", width="stretch"=True):
             st.session_state.race_active = False
             st.session_state.race_orchestrator = None
             st.session_state.race_results = None
@@ -376,7 +376,7 @@ def render_voting_interface():
     col1, col2, col3 = st.columns([1, 1, 1])
     
     with col1:
-        if st.button("👈 Agent A", use_container_width=True, type="primary", key="vote_a"):
+        if st.button("👈 Agent A", width="stretch"=True, type="primary", key="vote_a"):
             # Save vote to database
             if st.session_state.get('race_db_id'):
                 try:
@@ -412,7 +412,7 @@ def render_voting_interface():
         st.write("")  # Spacer
     
     with col3:
-        if st.button("Agent B 👉", use_container_width=True, type="primary", key="vote_b"):
+        if st.button("Agent B 👉", width="stretch"=True, type="primary", key="vote_b"):
             # Save vote to database
             if st.session_state.get('race_db_id'):
                 try:

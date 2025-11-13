@@ -87,7 +87,7 @@ def render_leaderboard():
     # Display table
     st.dataframe(
         df,
-        use_container_width=True,
+        width="stretch"=True,
         hide_index=True
     )
     
@@ -102,7 +102,7 @@ def render_leaderboard():
         labels={"Win Rate": "Win Rate (%)"}
     )
     fig.update_layout(showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch"=True)
 
 
 def render_top_matchups():
@@ -239,7 +239,7 @@ def render_trends():
                     color='Races',
                     color_continuous_scale='Blues'
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch"=True)
             else:
                 st.info("💡 No race activity yet. Start racing to see agent activity!")
         else:

@@ -44,32 +44,88 @@ class LambdaClient:
         Invoke Lambda function to execute an agent task.
         
         Args:
-            agent_config: Agent configuration
+            agent_config: Agent configuration (must include agent_id, model, name)
             prompt: Task prompt
-            constraints: Optional task constraints
+            constraints: Optional task constraints (domains, schema)
         
         Returns:
-            Response from Lambda function
+            Response from Lambda function with format:
+            {
+                "status": "success" | "error",
+                "result": {...} | "error": "..."
+            }
         
         Raises:
             Exception: If invocation fails
         """
+        # Lambda handler expects this structure
         payload = {
-            "agent_config": agent_config,
-            "prompt": prompt,
-            "constraints": constraints or {}
+            "body": {
+                "action": "execute",
+                "agent_config": agent_config,
+                "prompt": prompt,
+                "constraints": constraints or {}
+            }
         }
         
         try:
             response = requests.post(
                 self.function_url,
                 json=payload,
-                timeout=300  # 5 minute timeout
+                timeout=300,  # 5 minute timeout
+                headers={"Content-Type": "application/json"}
             )
             response.raise_for_status()
-            return response.json()
+            
+            result = response.json()
+            
+            # Parse the response body if it's a string (Lambda function URL format)
+            if isinstance(result.get('body'), str):
+                result['body'] = json.loads(result['body'])
+            
+            # Return the body content
+            return result.get('body', result)
+            
+        except requests.exceptions.Timeout:
+            raise Exception("Lambda execution timed out (>5 minutes)")
         except requests.exceptions.RequestException as e:
             raise Exception(f"Lambda invocation failed: {str(e)}")
+    
+    def health_check(self) -> Dict[str, Any]:
+        """
+        Check if Lambda function is healthy and ready.
+        
+        Returns:
+            Health check response with status and playwright availability
+        """
+        payload = {
+            "body": {
+                "action": "health_check"
+            }
+        }
+        
+        try:
+            response = requests.post(
+                self.function_url,
+                json=payload,
+                timeout=30,
+                headers={"Content-Type": "application/json"}
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            
+            # Parse the response body if it's a string
+            if isinstance(result.get('body'), str):
+                result['body'] = json.loads(result['body'])
+            
+            return result.get('body', result)
+            
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": f"Health check failed: {str(e)}"
+            }
     
     def get_vnc_url(self, session_id: str) -> Optional[str]:
         """
@@ -81,10 +137,13 @@ class LambdaClient:
         Returns:
             VNC URL or None if not available
         
-        TODO: Implement actual VNC URL retrieval
+        Note: For now, returns a placeholder. In production, this would:
+        - Return a real VNC WebSocket URL from Lambda
+        - Or return screenshot polling URL
+        - Or return browserbase.com viewer URL
         """
-        # Placeholder
-        return f"http://localhost:6080/vnc.html?session={session_id}"
+        # Placeholder - will be replaced with actual Lambda VNC streaming
+        return f"https://placeholder-vnc.example.com?session={session_id}"
     
     def stop_execution(self, session_id: str) -> bool:
         """
@@ -96,8 +155,8 @@ class LambdaClient:
         Returns:
             True if successful, False otherwise
         
-        TODO: Implement execution termination
+        TODO: Implement execution termination endpoint in Lambda
         """
-        # Placeholder
+        # Placeholder - would call Lambda stop endpoint
         return True
 
