@@ -82,8 +82,8 @@ RUN git clone https://github.com/novnc/noVNC.git /opt/noVNC && \
     git checkout v1.4.0 && \
     ln -s /opt/noVNC/vnc.html /opt/noVNC/index.html
 
-# Configure VNC environment variables
-ENV DISPLAY=:99
+# VNC environment variables (disabled for screenshot polling)
+# ENV DISPLAY=:99  # REMOVED - causes Chromium to expect X server
 ENV VNC_PORT=5900
 ENV NOVNC_PORT=6080
 RUN mkdir -p ~/.vnc
