@@ -14,12 +14,7 @@ from typing import Dict, Any, List, Optional
 import time
 import base64
 
-try:
-    import aiohttp
-except ImportError:
-    import subprocess
-    subprocess.check_call(["pip", "install", "aiohttp"])
-    import aiohttp
+import aiohttp  # Required for BrowserBase API calls
 
 
 class BrowserBaseClient:
