@@ -83,18 +83,19 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 agent_config["api_key"] = api_key
         
         constraints = body.get("constraints", {})
-        enable_vnc = body.get("enable_vnc", True)  # Enable VNC by default
+        enable_vnc = body.get("enable_vnc", False)  # VNC disabled by default (using screenshot polling)
         
-        # Start VNC if requested
+        # Start VNC if explicitly requested (experimental)
         vnc_url = None
         if enable_vnc:
+            print("⚠️ VNC mode requested (experimental - screenshots recommended)")
             if ensure_vnc_running():
                 # Get Lambda Function URL from environment
                 lambda_url = os.environ.get('AWS_LAMBDA_FUNCTION_URL', os.environ.get('LAMBDA_FUNCTION_URL', 'http://localhost:6080'))
                 vnc_manager = get_vnc_manager()
                 vnc_url = vnc_manager.get_websocket_url(lambda_url)
             else:
-                print("Warning: Failed to start VNC, continuing without streaming")
+                print("Warning: Failed to start VNC, continuing with screenshot polling")
         
         # Execute agent task
         executor = AgentExecutor(agent_config)

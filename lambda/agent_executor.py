@@ -8,6 +8,7 @@ including navigation, interaction, and data extraction.
 import asyncio
 import time
 import os
+import base64
 from typing import Dict, Any, Optional, List
 from playwright.async_api import async_playwright, Browser, Page, TimeoutError as PlaywrightTimeout
 import json
@@ -36,7 +37,10 @@ class AgentExecutor:
         self.page: Optional[Page] = None
         self.tool_calls: List[Dict[str, Any]] = []
         self.checkpoints: List[Dict[str, Any]] = []
+        self.screenshots: List[Dict[str, Any]] = []
         self.start_time: Optional[float] = None
+        self._screenshot_task: Optional[asyncio.Task] = None
+        self._should_capture = True
     
     async def execute(self, prompt: str, constraints: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -62,30 +66,13 @@ class AgentExecutor:
             self._add_checkpoint("initialization", "Starting browser and initializing agent")
             
             async with async_playwright() as p:
-                # Check if VNC is available (DISPLAY env var set)
-                display_value = os.environ.get('DISPLAY')
-                has_display = display_value is not None
+                # Always use headless mode for screenshot polling
+                # VNC mode is disabled - we use periodic screenshots instead
+                print("🎬 Launching browser in headless mode (screenshot polling enabled)")
                 
-                # Log display status for debugging
-                print(f"DISPLAY environment variable: {display_value}")
-                print(f"Launching browser in {'headed' if has_display else 'headless'} mode")
-                
-                # Launch browser with appropriate options for Lambda
-                # Different args for headed (VNC) vs headless mode
-                if has_display:
-                    # Headed mode for VNC - minimal args for X11 compatibility
-                    launch_args = [
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--no-first-run',
-                        '--disable-extensions',
-                        '--disable-software-rasterizer',
-                        '--disable-dev-tools'
-                    ]
-                else:
-                    # Headless mode - more aggressive optimizations
-                    launch_args = [
+                self.browser = await p.chromium.launch(
+                    headless=True,
+                    args=[
                         '--no-sandbox',
                         '--disable-setuid-sandbox',
                         '--disable-dev-shm-usage',
@@ -95,10 +82,6 @@ class AgentExecutor:
                         '--single-process',
                         '--disable-extensions'
                     ]
-                
-                self.browser = await p.chromium.launch(
-                    headless=not has_display,
-                    args=launch_args
                 )
                 
                 # Create browser context with reasonable defaults
@@ -111,8 +94,22 @@ class AgentExecutor:
                 
                 self._add_checkpoint("browser_ready", "Browser initialized successfully")
                 
-                # Execute the actual task
-                result = await self._execute_task(prompt, constraints)
+                # Start screenshot capture in background
+                self._screenshot_task = asyncio.create_task(self._capture_screenshots_loop(interval=2.0))
+                print("📸 Screenshot capture task started")
+                
+                try:
+                    # Execute the actual task
+                    result = await self._execute_task(prompt, constraints)
+                finally:
+                    # Stop screenshot capture
+                    self._should_capture = False
+                    if self._screenshot_task:
+                        try:
+                            await asyncio.wait_for(self._screenshot_task, timeout=5.0)
+                        except asyncio.TimeoutError:
+                            self._screenshot_task.cancel()
+                        print("📸 Screenshot capture task stopped")
                 
                 # Cleanup
                 await self.browser.close()
@@ -127,10 +124,18 @@ class AgentExecutor:
                     "tool_calls": self.tool_calls,
                     "checkpoints": self.checkpoints,
                     "execution_time": execution_time,
-                    "screenshots": result.get("screenshots", [])
+                    "screenshots": self.screenshots  # Include captured screenshots
                 }
         
         except Exception as e:
+            # Stop screenshot capture on error
+            self._should_capture = False
+            if self._screenshot_task:
+                try:
+                    self._screenshot_task.cancel()
+                except:
+                    pass
+            
             execution_time = time.time() - self.start_time if self.start_time else 0
             self._add_checkpoint("error", f"Execution failed: {str(e)}")
             
@@ -140,7 +145,8 @@ class AgentExecutor:
                 "error_type": type(e).__name__,
                 "tool_calls": self.tool_calls,
                 "checkpoints": self.checkpoints,
-                "execution_time": execution_time
+                "execution_time": execution_time,
+                "screenshots": self.screenshots  # Include screenshots even on error
             }
     
     async def _execute_task(self, prompt: str, constraints: Dict[str, Any]) -> Dict[str, Any]:
@@ -308,6 +314,45 @@ class AgentExecutor:
             tool_call["error"] = str(e)
             self.tool_calls.append(tool_call)
             return {"success": False, "error": str(e)}
+    
+    async def _capture_screenshots_loop(self, interval: float = 2.0):
+        """
+        Background task to capture screenshots periodically.
+        
+        Args:
+            interval: Time between screenshots in seconds (default: 2.0)
+        """
+        print(f"📸 Starting screenshot capture loop (interval: {interval}s)")
+        screenshot_count = 0
+        
+        while self._should_capture and self.page:
+            try:
+                # Capture screenshot as bytes
+                screenshot_bytes = await self.page.screenshot()
+                
+                # Convert to base64 for JSON transport
+                screenshot_b64 = base64.b64encode(screenshot_bytes).decode('utf-8')
+                
+                # Store with metadata
+                self.screenshots.append({
+                    'timestamp': time.time(),
+                    'elapsed': time.time() - self.start_time if self.start_time else 0,
+                    'data': screenshot_b64,
+                    'format': 'png',
+                    'index': screenshot_count
+                })
+                
+                screenshot_count += 1
+                
+                # Wait before next capture
+                await asyncio.sleep(interval)
+                
+            except Exception as e:
+                print(f"Screenshot capture error: {e}")
+                # Continue on error - don't break the loop
+                await asyncio.sleep(interval)
+        
+        print(f"📸 Screenshot capture loop ended. Captured {screenshot_count} screenshots")
     
     async def _tool_click(self, selector: str) -> Dict[str, Any]:
         """Click an element."""
