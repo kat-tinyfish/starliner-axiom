@@ -1,7 +1,7 @@
 """
 Google Agent Implementation - Gemini 2.0 Flash with Native Function Calling
 
-This agent uses Google's Gemini native function calling API to orchestrate browser automation.
+This agent uses Google's Gemini API with function calling to orchestrate browser automation.
 
 Flow:
 1. User provides natural language task
@@ -49,29 +49,16 @@ class GoogleAgent(BaseAgent):
         super().__init__(agent_id, name, api_key)
         self.model = model
         self._is_executing = False
-        self.model_instance = None
+        self.client = None
     
     def _initialize_client(self):
         """Initialize Google Generative AI client."""
-        if not self.model_instance:
-            import google.generativeai as genai
-            genai.configure(api_key=self.api_key)
+        if not self.client:
+            from google import genai
+            from google.genai import types
             
-            # Convert our universal tools to Gemini format
-            tool_declarations = []
-            for tool in BROWSER_TOOLS:
-                tool_declarations.append({
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.parameters
-                })
-            
-            # Create model with tools
-            self.model_instance = genai.GenerativeModel(
-                model_name=self.model,
-                tools=tool_declarations,
-                system_instruction=SYSTEM_INSTRUCTION
-            )
+            self.client = genai.Client(api_key=self.api_key)
+            self.genai_types = types
     
     async def execute(self, prompt: str, constraints: Optional[Dict[str, Any]] = None) -> AgentResult:
         """
@@ -109,50 +96,57 @@ class GoogleAgent(BaseAgent):
                 # Checkpoint 3: Planning
                 self._add_checkpoint("planning", "Gemini analyzing task and planning approach", "completed")
                 
-                # Start chat session with automatic function calling disabled
-                # We manually handle function execution via BrowserToolExecutor
-                chat = self.model_instance.start_chat(enable_automatic_function_calling=False)
+                # Build function declarations from our browser tools
+                function_declarations = []
+                for tool in BROWSER_TOOLS:
+                    function_declarations.append(
+                        self.genai_types.FunctionDeclaration(
+                            name=tool.name,
+                            description=tool.description,
+                            parameters=tool.parameters
+                        )
+                    )
                 
-                # Send initial prompt
+                # Create config with tools
+                config = self.genai_types.GenerateContentConfig(
+                    tools=[self.genai_types.Tool(function_declarations=function_declarations)],
+                    system_instruction=SYSTEM_INSTRUCTION
+                )
+                
+                # Build initial user prompt
                 user_prompt = self._build_user_prompt(prompt, constraints)
                 
-                # Tool calling loop - let Gemini orchestrate
+                # Initialize contents list (conversation history)
+                from google.genai.types import Content, Part
+                contents = [
+                    Content(
+                        role="user",
+                        parts=[Part(text=user_prompt)]
+                    )
+                ]
+                
+                # Tool calling loop
                 max_iterations = 15
                 final_response = None
-                message_to_send = user_prompt
                 
                 for iteration in range(max_iterations):
                     print(f"\n🤖 Gemini Iteration {iteration + 1}/{max_iterations}")
                     
-                    # Skip if no message to send (shouldn't happen, but safety check)
-                    if message_to_send is None and iteration > 0:
-                        print("   ⚠️  No message to send, breaking loop")
-                        break
-                    
-                    # Ask Gemini what to do next
+                    # Generate content with Gemini
                     try:
-                        # Ensure message_to_send is a string (not an object)
-                        if not isinstance(message_to_send, str):
-                            print(f"   ⚠️  Warning: message_to_send is not a string: {type(message_to_send)}")
-                            message_to_send = str(message_to_send)
-                        
                         response = await asyncio.to_thread(
-                            chat.send_message,
-                            message_to_send
+                            self.client.models.generate_content,
+                            model=self.model,
+                            contents=contents,
+                            config=config
                         )
                     except Exception as e:
-                        error_msg = str(e)
-                        error_type = type(e).__name__
-                        print(f"   ❌ Error sending message to Gemini: {error_type}: {error_msg}")
-                        print(f"   📝 Message type: {type(message_to_send)}, Content: {str(message_to_send)[:100]}")
+                        print(f"   ❌ Error calling Gemini API: {type(e).__name__}: {str(e)}")
                         import traceback
                         traceback.print_exc()
                         raise
                     
-                    # Reset message_to_send for next iteration (will be set if function calls happen)
-                    message_to_send = None
-                    
-                    # Check if Gemini wants to use functions
+                    # Add assistant response to history
                     if not response.candidates:
                         print("   ⚠️  No candidates in response")
                         break
@@ -162,15 +156,18 @@ class GoogleAgent(BaseAgent):
                         print("   ⚠️  No content in candidate")
                         break
                     
-                    if not candidate.content.parts:
-                        print("   ⚠️  No parts in content")
-                        break
+                    # Add assistant's response to conversation history
+                    contents.append(candidate.content)
                     
-                    function_calls = [
-                        part.function_call
-                        for part in candidate.content.parts
-                        if hasattr(part, 'function_call') and part.function_call
-                    ]
+                    # Check for function calls
+                    function_calls = []
+                    for part in candidate.content.parts:
+                        try:
+                            if hasattr(part, 'function_call') and part.function_call:
+                                function_calls.append(part.function_call)
+                        except Exception as e:
+                            print(f"   ⚠️  Could not access function_call from part: {type(e).__name__}: {e}")
+                            continue
                     
                     if function_calls:
                         # Gemini has chosen tools to execute
@@ -180,42 +177,35 @@ class GoogleAgent(BaseAgent):
                         function_responses = []
                         
                         for function_call in function_calls:
-                            tool_name = function_call.name
+                            # Safely extract tool name
+                            try:
+                                tool_name = function_call.name if hasattr(function_call, 'name') else 'unknown'
+                            except Exception as e:
+                                print(f"   ⚠️  Could not get tool name: {e}")
+                                tool_name = 'unknown'
                             
-                            # Extract args - Gemini uses protobuf Struct which needs conversion
+                            # Extract args - Gemini uses protobuf Struct
                             tool_args = {}
                             try:
-                                if not function_call.args:
+                                if not hasattr(function_call, 'args') or function_call.args is None:
                                     tool_args = {}
                                 else:
-                                    # Try multiple methods to extract args
-                                    # Method 1: Direct dict conversion
+                                    # Try to convert protobuf Struct to dict
                                     try:
-                                        tool_args = dict(function_call.args)
-                                    except (TypeError, AttributeError, ValueError):
-                                        # Method 2: Protobuf MessageToDict
+                                        from google.protobuf.json_format import MessageToDict
+                                        tool_args = MessageToDict(function_call.args)
+                                    except:
+                                        # Fallback: try direct dict conversion
                                         try:
-                                            from google.protobuf.json_format import MessageToDict
-                                            tool_args = MessageToDict(function_call.args)
+                                            tool_args = dict(function_call.args)
                                         except:
-                                            # Method 3: Access as dict-like object
-                                            try:
-                                                tool_args = {k: v for k, v in function_call.args.items()}
-                                            except:
-                                                # Method 4: Try accessing fields directly
-                                                try:
-                                                    # Protobuf struct fields
-                                                    if hasattr(function_call.args, 'fields'):
-                                                        tool_args = {k: v for k, v in function_call.args.fields.items()}
-                                                    else:
-                                                        tool_args = {}
-                                                except:
-                                                    tool_args = {}
+                                            # Last resort: empty dict
+                                            tool_args = {}
                             except Exception as e:
-                                print(f"   ⚠️  Warning: Could not extract function args: {e}")
+                                print(f"   ⚠️  Could not extract args: {type(e).__name__}: {e}")
                                 tool_args = {}
                             
-                            print(f"   ⚙️  Executing: {tool_name}({json.dumps(tool_args, indent=2)})")
+                            print(f"   ⚙️  Executing: {tool_name}({json.dumps(tool_args, default=str)})")
                             
                             # Execute the tool via browser executor
                             result = await executor.execute_tool(tool_name, tool_args)
@@ -237,71 +227,45 @@ class GoogleAgent(BaseAgent):
                                 })
                             
                             # Prepare function response for Gemini
-                            import google.generativeai as genai
-                            
-                            # Create function response part
                             response_data = {
-                                "success": result.success,
-                                "data": result.data,
-                                "error": result.error,
-                                "execution_time": result.execution_time
+                                "success": bool(result.success),
+                                "data": self._safe_serialize(result.data),
+                                "error": self._safe_serialize(result.error),
+                                "execution_time": float(result.execution_time) if result.execution_time else 0.0
                             }
                             
-                            # Create function response part using protobuf
-                            function_response = genai.protos.FunctionResponse(
-                                name=tool_name,
-                                response=response_data
-                            )
-                            
-                            function_responses.append(
-                                genai.protos.Part(function_response=function_response)
-                            )
+                            # Create function response part
+                            try:
+                                function_response = self.genai_types.FunctionResponse(
+                                    name=tool_name,
+                                    response=response_data
+                                )
+                                
+                                function_responses.append(
+                                    Part(function_response=function_response)
+                                )
+                            except Exception as e:
+                                print(f"   ⚠️  Could not create function response: {type(e).__name__}: {e}")
+                                # Create a text-based fallback
+                                response_text = f"{tool_name}: success={result.success}"
+                                if result.data:
+                                    response_text += f", data={self._safe_serialize(result.data)}"
+                                if result.error:
+                                    response_text += f", error={self._safe_serialize(result.error)}"
+                                
+                                function_responses.append(Part(text=response_text))
                             
                             print(f"   ✅ Result: {result.success}")
                             if result.error:
                                 print(f"   ⚠️  Error: {result.error}")
                         
-                        # Send function results back to Gemini
-                        # Build a JSON text message describing the function results
-                        # (chat.send_message accepts strings, not protobuf objects)
-                        function_results_summary = []
-                        for fr in function_responses:
-                            try:
-                                if hasattr(fr, 'function_response'):
-                                    func_name = fr.function_response.name
-                                    func_response = fr.function_response.response
-                                    
-                                    # Format as readable text
-                                    if isinstance(func_response, dict):
-                                        success = func_response.get('success', False)
-                                        data = func_response.get('data', {})
-                                        error = func_response.get('error')
-                                        
-                                        if success:
-                                            result_text = f"Function {func_name} executed successfully."
-                                            if data:
-                                                # Include key data points
-                                                if isinstance(data, dict):
-                                                    data_summary = ", ".join([f"{k}: {v}" for k, v in list(data.items())[:3]])
-                                                    if data_summary:
-                                                        result_text += f" Result: {data_summary}"
-                                                else:
-                                                    result_text += f" Result: {str(data)[:100]}"
-                                        else:
-                                            result_text = f"Function {func_name} failed: {error or 'Unknown error'}"
-                                        
-                                        function_results_summary.append(result_text)
-                                    else:
-                                        function_results_summary.append(f"Function {func_name}: {str(func_response)[:200]}")
-                            except Exception as e:
-                                print(f"   ⚠️  Warning: Could not format function response: {e}")
-                                function_results_summary.append("Function executed (details unavailable)")
-                        
-                        # Send as text message for next iteration
-                        if function_results_summary:
-                            message_to_send = "\n\n".join(function_results_summary) + "\n\nContinue with the task."
-                        else:
-                            message_to_send = "Function execution completed. Continue with the task."
+                        # Add function responses to conversation history
+                        contents.append(
+                            Content(
+                                role="user",
+                                parts=function_responses
+                            )
+                        )
                     
                     else:
                         # Gemini provided text response (task complete)
@@ -309,7 +273,7 @@ class GoogleAgent(BaseAgent):
                         text_parts = [
                             part.text
                             for part in candidate.content.parts
-                            if hasattr(part, 'text')
+                            if hasattr(part, 'text') and part.text
                         ]
                         final_response = '\n'.join(text_parts) if text_parts else "Task completed"
                         break
@@ -344,17 +308,33 @@ class GoogleAgent(BaseAgent):
                 )
         
         except Exception as e:
-            print(f"❌ Error in Google agent execution: {str(e)}")
+            # Safely format error message
+            try:
+                error_str = str(e)
+                error_type = type(e).__name__
+            except:
+                error_str = f"Error of type {type(e).__name__}"
+                error_type = type(e).__name__
+            
+            print(f"❌ Error in Google agent execution: {error_type}: {error_str}")
             import traceback
             traceback.print_exc()
             
-            self._add_checkpoint("error", f"Execution failed: {str(e)}", "error")
+            # Create detailed error message
+            error_message = f"{error_type}: {error_str}"
+            if hasattr(e, '__cause__') and e.__cause__:
+                try:
+                    error_message += f" (caused by: {type(e.__cause__).__name__}: {str(e.__cause__)})"
+                except:
+                    pass
+            
+            self._add_checkpoint("error", f"Execution failed: {error_message}", "error")
             execution_time = time.time() - start_time
             
             return AgentResult(
                 success=False,
                 output=None,
-                error_message=str(e),
+                error_message=error_message,
                 execution_time=execution_time,
                 tool_calls=self._tool_calls,
                 checkpoints=self._checkpoints,
@@ -362,6 +342,20 @@ class GoogleAgent(BaseAgent):
             )
         finally:
             self._is_executing = False
+    
+    def _safe_serialize(self, obj: Any) -> Any:
+        """Convert object to JSON-serializable format."""
+        if obj is None:
+            return None
+        try:
+            json.dumps(obj)  # Test if serializable
+            return obj
+        except (TypeError, ValueError):
+            # Convert to string representation
+            try:
+                return str(obj)
+            except:
+                return repr(obj)
     
     def _build_user_prompt(self, prompt: str, constraints: Optional[Dict[str, Any]]) -> str:
         """Build the user prompt with task and constraints."""
