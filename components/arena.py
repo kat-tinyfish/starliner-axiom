@@ -245,44 +245,43 @@ def render_race_view():
                 st.session_state.race_executing = False
                 
                 st.success(f"✅ Race completed in {duration:.1f}s!")
-            
-            # Save executions to database
-            if st.session_state.race_db_id:
-                try:
-                    from database.operations import get_db
-                    db_ops = get_db()
-                    
-                    agent_a_data = db_ops.get_agent_by_display_name(orchestrator.agent_a.name)
-                    agent_b_data = db_ops.get_agent_by_display_name(orchestrator.agent_b.name)
-                    
-                    if agent_a_data:
-                        db_ops.save_agent_execution(
-                            race_id=st.session_state.race_db_id,
-                            agent_id=agent_a_data['id'],
-                            checkpoints=[{"name": cp.name, "status": cp.status, "timestamp": cp.timestamp.isoformat()} for cp in result_a.checkpoints],
-                            tool_calls=[{"tool": tc.tool_name, "status": tc.status, "timestamp": tc.timestamp.isoformat()} for tc in result_a.tool_calls],
-                            output=result_a.output,
-                            error_message=result_a.error_message,
-                            execution_time=result_a.execution_time,
-                            final_status="success" if result_a.success else "error"
-                        )
-                    
-                    if agent_b_data:
-                        db_ops.save_agent_execution(
-                            race_id=st.session_state.race_db_id,
-                            agent_id=agent_b_data['id'],
-                            checkpoints=[{"name": cp.name, "status": cp.status, "timestamp": cp.timestamp.isoformat()} for cp in result_b.checkpoints],
-                            tool_calls=[{"tool": tc.tool_name, "status": tc.status, "timestamp": tc.timestamp.isoformat()} for tc in result_b.tool_calls],
-                            output=result_b.output,
-                            error_message=result_b.error_message,
-                            execution_time=result_b.execution_time,
-                            final_status="success" if result_b.success else "error"
-                        )
-                    
-                    db_ops.update_race_status(st.session_state.race_db_id, "completed", duration=duration)
-                except Exception as e:
-                    st.warning(f"Failed to save race results to database: {str(e)}")
-            
+                
+                # Save executions to database
+                if st.session_state.race_db_id:
+                    try:
+                        from database.operations import get_db
+                        db_ops = get_db()
+                        
+                        agent_a_data = db_ops.get_agent_by_display_name(orchestrator.agent_a.name)
+                        agent_b_data = db_ops.get_agent_by_display_name(orchestrator.agent_b.name)
+                        
+                        if agent_a_data:
+                            db_ops.save_agent_execution(
+                                race_id=st.session_state.race_db_id,
+                                agent_id=agent_a_data['id'],
+                                checkpoints=[{"name": cp.name, "status": cp.status, "timestamp": cp.timestamp.isoformat()} for cp in result_a.checkpoints],
+                                tool_calls=[{"tool": tc.tool_name, "status": tc.status, "timestamp": tc.timestamp.isoformat()} for tc in result_a.tool_calls],
+                                output=result_a.output,
+                                error_message=result_a.error_message,
+                                execution_time=result_a.execution_time,
+                                final_status="success" if result_a.success else "error"
+                            )
+                        
+                        if agent_b_data:
+                            db_ops.save_agent_execution(
+                                race_id=st.session_state.race_db_id,
+                                agent_id=agent_b_data['id'],
+                                checkpoints=[{"name": cp.name, "status": cp.status, "timestamp": cp.timestamp.isoformat()} for cp in result_b.checkpoints],
+                                tool_calls=[{"tool": tc.tool_name, "status": tc.status, "timestamp": tc.timestamp.isoformat()} for tc in result_b.tool_calls],
+                                output=result_b.output,
+                                error_message=result_b.error_message,
+                                execution_time=result_b.execution_time,
+                                final_status="success" if result_b.success else "error"
+                            )
+                        
+                        db_ops.update_race_status(st.session_state.race_db_id, "completed", duration=duration)
+                    except Exception as e:
+                        st.warning(f"Failed to save race results to database: {str(e)}")
                 
                 st.rerun()
                 
