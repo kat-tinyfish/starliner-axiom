@@ -71,6 +71,11 @@ playwright/.cache/
 lambda/layer/
 lambda/layer.zip
 lambda/function.zip
+lambda/Dockerfile
+
+# AWS credentials (never commit!)
+rootkey.csv
+*.csv
 
 # Temporary files
 tmp/
@@ -82,6 +87,6 @@ screenshots/
 recordings/
 
 #build artifacts
-build/
+build_docs/
 
 

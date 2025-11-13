@@ -42,10 +42,15 @@ echo ""
 # Create Dockerfile
 echo "📝 Creating Dockerfile..."
 cat > Dockerfile << 'EOF'
-FROM public.ecr.aws/lambda/python:3.11
+FROM public.ecr.aws/lambda/python:3.12
 
-# Install system dependencies for Playwright
-RUN yum install -y \
+# Install Node.js 18 (required for Playwright)
+RUN dnf install -y tar gzip && \
+    curl -fsSL https://nodejs.org/dist/v18.19.0/node-v18.19.0-linux-x64.tar.gz | tar -xz -C /usr/local --strip-components=1 && \
+    dnf clean all
+
+# Install system dependencies for Chromium
+RUN dnf install -y \
     atk \
     cups-libs \
     gtk3 \
@@ -58,9 +63,12 @@ RUN yum install -y \
     libXScrnSaver \
     libXtst \
     pango \
+    alsa-lib \
+    libdrm \
+    mesa-libgbm \
+    nss \
     xdg-utils \
-    wget \
-    && yum clean all
+    && dnf clean all
 
 # Copy function code
 COPY handler.py agent_executor.py ${LAMBDA_TASK_ROOT}/
@@ -69,9 +77,19 @@ COPY handler.py agent_executor.py ${LAMBDA_TASK_ROOT}/
 COPY requirements.txt .
 RUN pip install -r requirements.txt --target "${LAMBDA_TASK_ROOT}"
 
-# Install Playwright and browsers
+# Install Playwright
 RUN pip install playwright --target "${LAMBDA_TASK_ROOT}"
-RUN python -m playwright install chromium
+
+# Replace Playwright's bundled Node.js with system Node.js
+# This fixes GLIBC compatibility issues on Amazon Linux 2
+RUN rm -f ${LAMBDA_TASK_ROOT}/playwright/driver/node && \
+    ln -s /usr/local/bin/node ${LAMBDA_TASK_ROOT}/playwright/driver/node
+
+# Install Playwright browsers (dependencies already installed via dnf)
+# Set environment variables for Playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright \
+    python -m playwright install chromium
 
 # Set the CMD to your handler
 CMD [ "handler.lambda_handler" ]
@@ -95,7 +113,7 @@ aws ecr get-login-password --region $REGION | \
 
 # Build Docker image
 echo "🏗️  Building Docker image..."
-docker build -t $IMAGE_NAME .
+docker build --platform linux/amd64 -t $IMAGE_NAME .
 
 # Tag image
 ECR_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${IMAGE_NAME}:latest"
