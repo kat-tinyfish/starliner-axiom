@@ -27,7 +27,7 @@ CREATE TABLE agents (
 -- Insert the 4 launch agents
 INSERT INTO agents (name, display_name, version, description, api_provider, model) VALUES
     ('gpt4_web_agent', 'GPT-4 Web Agent', '1.0', 'OpenAI GPT-4 Turbo with web navigation capabilities', 'openai', 'gpt-4-turbo'),
-    ('claude_web_agent', 'Claude 3.5 Sonnet Agent', '1.0', 'Anthropic Claude 3.5 Sonnet with advanced reasoning', 'anthropic', 'claude-3-5-sonnet-20241022'),
+    ('claude_web_agent', 'Claude Sonnet 4.5 Agent', '1.0', 'Anthropic Claude Sonnet 4.5 with advanced reasoning', 'anthropic', 'claude-sonnet-4-5'),
     ('gemini_web_agent', 'Gemini 2.0 Agent', '1.0', 'Google Gemini 2.0 Flash with multimodal capabilities', 'google', 'gemini-2.0-flash-exp'),
     ('tinyfish_agent', 'TinyFish Agent', '1.0', 'Custom TinyFish web agent with specialized capabilities', 'custom', 'tinyfish-v1');
 
