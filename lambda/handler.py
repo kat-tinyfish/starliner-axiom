@@ -50,13 +50,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # Health check endpoint
         if action == "health_check":
-            vnc_available = ensure_vnc_running()
+            # VNC disabled for screenshot polling
             return create_response(200, {
                 "status": "healthy",
-                "message": "Lambda function is running",
+                "message": "Lambda function is running (screenshot polling mode)",
                 "playwright_available": check_playwright_available(),
-                "vnc_available": vnc_available,
-                "vnc_port": get_vnc_manager().port if vnc_available else None
+                "screenshot_polling_enabled": True
             })
         
         # Validate required fields
