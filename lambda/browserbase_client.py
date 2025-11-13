@@ -191,36 +191,102 @@ class BrowserBaseClient:
                 "status": "completed"
             })
             
-            # Get CDP connection URL for Playwright/Puppeteer
-            debug_url = await self.get_debug_connection_url(session_id)
+            # Get CDP connection URL for Playwright
+            session_info = await self.get_session(session_id)
+            debug_url = session_info.get("debuggerFullscreenUrl") or session_info.get("debuggerUrl")
             
-            # TODO: Connect Playwright to remote browser via CDP
-            # from playwright.async_api import async_playwright
-            # async with async_playwright() as p:
-            #     browser = await p.chromium.connect_over_cdp(debug_url)
-            #     page = await browser.new_page()
-            #     # Execute agent logic here...
+            if not debug_url:
+                raise Exception("No CDP connection URL available for session")
             
-            # For MVP: Simple demonstration
-            checkpoints.append({
-                "name": "planning",
-                "description": "Analyzing task and planning execution",
-                "timestamp": time.time(),
-                "status": "completed"
-            })
+            print(f"🔗 Connecting to remote browser via CDP: {debug_url[:50]}...")
             
-            # Capture screenshots periodically
-            screenshot_task = asyncio.create_task(
-                self._capture_screenshots_loop(
-                    session_id,
-                    screenshots,
-                    interval=screenshot_interval,
-                    start_time=start_time
-                )
-            )
-            
-            # Simulate some execution time for MVP
-            await asyncio.sleep(5)
+            # Connect Playwright to BrowserBase remote browser
+            try:
+                from playwright.async_api import async_playwright
+                
+                async with async_playwright() as p:
+                    # Connect to the remote browser
+                    browser = await p.chromium.connect_over_cdp(debug_url)
+                    
+                    # Get the default context (BrowserBase creates one for us)
+                    contexts = browser.contexts
+                    if not contexts:
+                        raise Exception("No browser contexts available")
+                    
+                    context = contexts[0]
+                    pages = context.pages
+                    
+                    # Get or create a page
+                    if pages:
+                        page = pages[0]
+                    else:
+                        page = await context.new_page()
+                    
+                    print(f"✅ Connected to remote browser successfully")
+                    
+                    checkpoints.append({
+                        "name": "planning",
+                        "description": "Analyzing task and planning execution",
+                        "timestamp": time.time(),
+                        "status": "completed"
+                    })
+                    
+                    tool_calls.append({
+                        "timestamp": time.time(),
+                        "tool": "navigate",
+                        "args": {"url": prompt},
+                        "status": "starting"
+                    })
+                    
+                    # Start screenshot capture in background
+                    screenshot_task = asyncio.create_task(
+                        self._capture_screenshots_loop(
+                            session_id,
+                            screenshots,
+                            interval=screenshot_interval,
+                            start_time=start_time
+                        )
+                    )
+                    
+                    # Navigate to the URL (extract from prompt or constraints)
+                    target_url = self._extract_url(prompt, constraints or {})
+                    
+                    if target_url:
+                        print(f"🌐 Navigating to: {target_url}")
+                        await page.goto(target_url, wait_until="networkidle", timeout=30000)
+                        
+                        tool_calls[-1]["status"] = "success"
+                        tool_calls[-1]["result"] = f"Navigated to {target_url}"
+                        
+                        checkpoints.append({
+                            "name": "navigation_complete",
+                            "description": f"Successfully loaded {target_url}",
+                            "timestamp": time.time(),
+                            "status": "completed"
+                        })
+                        
+                        # Get page info
+                        title = await page.title()
+                        url = page.url
+                        
+                        tool_calls.append({
+                            "timestamp": time.time(),
+                            "tool": "extract_info",
+                            "args": {},
+                            "status": "success",
+                            "result": {"title": title, "url": url}
+                        })
+                    else:
+                        print(f"⚠️ No URL found in prompt, staying on blank page")
+                    
+                    # Wait a bit for screenshots to capture
+                    await asyncio.sleep(3)
+                    
+            except Exception as e:
+                print(f"❌ Playwright connection failed: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                raise
             
             # Stop screenshot capture
             screenshot_task.cancel()
@@ -276,6 +342,31 @@ class BrowserBaseClient:
                 except Exception as e:
                     print(f"Warning: Failed to end session {session_id}: {e}")
     
+    def _extract_url(self, prompt: str, constraints: Dict[str, Any]) -> Optional[str]:
+        """Extract URL from prompt or constraints."""
+        import re
+        
+        # Check constraints first
+        if "domains" in constraints and constraints["domains"]:
+            domain = constraints["domains"][0]
+            if not domain.startswith("http"):
+                domain = f"https://{domain}"
+            return domain
+        
+        # Look for URLs in prompt
+        url_pattern = r'https?://[^\s]+'
+        urls = re.findall(url_pattern, prompt)
+        if urls:
+            return urls[0]
+        
+        # Look for domain names
+        domain_pattern = r'\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b'
+        domains = re.findall(domain_pattern, prompt)
+        if domains:
+            return f"https://{domains[0]}"
+        
+        return None
+    
     async def _capture_screenshots_loop(
         self,
         session_id: str,
@@ -311,6 +402,10 @@ class BrowserBaseClient:
 
 # CLI for testing
 if __name__ == "__main__":
+    # Load environment variables from .env file
+    from dotenv import load_dotenv
+    load_dotenv()
+    
     async def test():
         client = BrowserBaseClient()
         
@@ -323,9 +418,13 @@ if __name__ == "__main__":
         )
         
         print(f"\n✅ Success: {result['success']}")
+        if not result['success']:
+            print(f"❌ Error: {result.get('error', 'Unknown')}")
+            print(f"   Type: {result.get('error_type', 'Unknown')}")
         print(f"📸 Screenshots: {len(result['screenshots'])}")
         print(f"⏱️  Execution time: {result['execution_time']:.2f}s")
         print(f"🚩 Checkpoints: {len(result['checkpoints'])}")
+        print(f"🔧 Tool calls: {len(result['tool_calls'])}")
     
     asyncio.run(test())
 
