@@ -132,128 +132,75 @@ class OpenAIAgent(BaseAgent):
     
     async def execute(self, prompt: str, constraints: Optional[Dict[str, Any]] = None) -> AgentResult:
         """
-        Execute a task using GPT-4 with function calling.
+        Execute a task using GPT-4 with browser automation.
+        
+        This delegates actual browser control to BrowserBase/Lambda while
+        GPT-4 provides the intelligence for decision-making.
         """
         start_time = time.time()
         self._is_executing = True
-        self._initialize_client()
         
         try:
+            # Import browser client
+            from utils.browser_client import get_browser_client
+            
             # Checkpoint 1: Initialization
             self._add_checkpoint("initialization", "Agent initialized and ready", "completed")
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.3)
             
             # Checkpoint 2: Planning
-            self._add_checkpoint("planning", "Analyzing task and creating execution plan", "in_progress")
+            self._add_checkpoint("planning", "Delegating to browser execution engine", "completed")
+            await asyncio.sleep(0.2)
             
-            # Build system prompt
-            system_prompt = """You are a web automation agent. You can navigate websites, click elements, 
-            fill forms, and extract data. Break down the user's task into steps and use the available 
-            tools to accomplish it. Think step by step."""
+            # Execute via browser client (BrowserBase or Lambda)
+            browser_client = get_browser_client()
             
-            if constraints:
-                if "domains" in constraints:
-                    system_prompt += f"\n\nYou must only visit these domains: {constraints['domains']}"
-                if "schema" in constraints:
-                    system_prompt += f"\n\nReturn data in this format: {json.dumps(constraints['schema'])}"
+            # Prepare agent config
+            agent_config = {
+                "agent_id": self.agent_id,
+                "model": self.model,
+                "name": self.name
+            }
             
-            # Make initial API call
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt}
-            ]
-            
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=self._get_browser_tools(),
-                tool_choice="auto",
-                max_tokens=1000
+            # Execute the task
+            browser_result = await browser_client.execute_agent(
+                prompt=prompt,
+                agent_config=agent_config,
+                constraints=constraints
             )
             
-            self._add_checkpoint("planning", "Execution plan created", "completed")
-            await asyncio.sleep(0.3)
+            # Merge browser execution results with our agent tracking
+            if browser_result.get("checkpoints"):
+                for cp_data in browser_result["checkpoints"]:
+                    self._add_checkpoint(
+                        cp_data.get("name", "step"),
+                        cp_data.get("description", ""),
+                        cp_data.get("status", "completed")
+                    )
             
-            # Checkpoint 3: Execution
-            self._add_checkpoint("execution", "Executing browser actions", "in_progress")
+            if browser_result.get("tool_calls"):
+                for tc_data in browser_result["tool_calls"]:
+                    self._add_tool_call(
+                        tc_data.get("tool", "action"),
+                        tc_data.get("args", {}),
+                        tc_data.get("status", "success")
+                    )
             
-            # Handle tool calls
-            message = response.choices[0].message
-            final_output = None
-            
-            # Agent loop: handle tool calls
-            max_iterations = 10
-            iteration = 0
-            
-            while message.tool_calls and iteration < max_iterations and self._is_executing:
-                iteration += 1
-                
-                # Execute each tool call
-                for tool_call in message.tool_calls:
-                    tool_name = tool_call.function.name
-                    tool_params = json.loads(tool_call.function.arguments)
-                    
-                    # Record tool call
-                    tc = self._add_tool_call(tool_name, tool_params, "in_progress")
-                    
-                    # Execute the tool
-                    try:
-                        result = await self._execute_browser_tool(tool_name, tool_params)
-                        self._update_tool_call(tc, "success", result=result)
-                    except Exception as e:
-                        self._update_tool_call(tc, "error", error_message=str(e))
-                        result = {"status": "error", "message": str(e)}
-                    
-                    # Add tool result to messages
-                    messages.append({
-                        "role": "assistant",
-                        "content": message.content,
-                        "tool_calls": [
-                            {
-                                "id": tool_call.id,
-                                "type": "function",
-                                "function": {
-                                    "name": tool_name,
-                                    "arguments": tool_call.function.arguments
-                                }
-                            }
-                        ]
-                    })
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": json.dumps(result)
-                    })
-                
-                # Get next response
-                response = await self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    tools=self._get_browser_tools(),
-                    tool_choice="auto",
-                    max_tokens=1000
-                )
-                
-                message = response.choices[0].message
-            
-            # Get final output
-            if message.content:
-                final_output = message.content
-            
-            self._add_checkpoint("execution", "Browser actions completed", "completed")
-            await asyncio.sleep(0.3)
-            
-            # Checkpoint 4: Completion
-            self._add_checkpoint("completion", "Task completed successfully", "completed")
+            # Final checkpoint
+            if browser_result.get("success"):
+                self._add_checkpoint("completion", "Task completed successfully", "completed")
+            else:
+                self._add_checkpoint("error", f"Task failed: {browser_result.get('error', 'Unknown error')}", "error")
             
             execution_time = time.time() - start_time
             
             return AgentResult(
-                success=True,
-                output=final_output,
+                success=browser_result.get("success", False),
+                output=browser_result.get("output_data", {}),
                 execution_time=execution_time,
                 tool_calls=self._tool_calls,
-                checkpoints=self._checkpoints
+                checkpoints=self._checkpoints,
+                screenshots=browser_result.get("screenshots", [])
             )
         
         except Exception as e:
@@ -266,7 +213,8 @@ class OpenAIAgent(BaseAgent):
                 error_message=str(e),
                 execution_time=execution_time,
                 tool_calls=self._tool_calls,
-                checkpoints=self._checkpoints
+                checkpoints=self._checkpoints,
+                screenshots=[]
             )
         finally:
             self._is_executing = False

@@ -109,122 +109,76 @@ class AnthropicAgent(BaseAgent):
             return {"status": "error", "message": f"Unknown tool: {tool_name}"}
     
     async def execute(self, prompt: str, constraints: Optional[Dict[str, Any]] = None) -> AgentResult:
-        """Execute a task using Claude 3.5 Sonnet with tool use."""
+        """
+        Execute a task using Claude 3.5 Sonnet with browser automation.
+        
+        This delegates actual browser control to BrowserBase/Lambda while
+        Claude provides the intelligence for decision-making.
+        """
         start_time = time.time()
         self._is_executing = True
-        self._initialize_client()
         
         try:
+            # Import browser client
+            from utils.browser_client import get_browser_client
+            
             # Checkpoint 1: Initialization
             self._add_checkpoint("initialization", "Agent initialized and ready", "completed")
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.3)
             
             # Checkpoint 2: Planning
-            self._add_checkpoint("planning", "Analyzing task with advanced reasoning", "in_progress")
+            self._add_checkpoint("planning", "Delegating to browser execution engine", "completed")
+            await asyncio.sleep(0.2)
             
-            # Build system prompt
-            system_prompt = """You are a web automation agent with advanced reasoning capabilities. 
-            You can navigate websites, interact with elements, and extract information. 
-            Think step by step about how to accomplish the task efficiently."""
+            # Execute via browser client (BrowserBase or Lambda)
+            browser_client = get_browser_client()
             
-            if constraints:
-                if "domains" in constraints:
-                    system_prompt += f"\n\nRestrict your navigation to: {constraints['domains']}"
-                if "schema" in constraints:
-                    system_prompt += f"\n\nFormat output as: {json.dumps(constraints['schema'])}"
+            # Prepare agent config
+            agent_config = {
+                "agent_id": self.agent_id,
+                "model": self.model,
+                "name": self.name
+            }
             
-            # Make initial API call
-            messages = [
-                {"role": "user", "content": prompt}
-            ]
-            
-            response = await self.client.messages.create(
-                model=self.model,
-                system=system_prompt,
-                max_tokens=1024,
-                tools=self._get_browser_tools(),
-                messages=messages
+            # Execute the task
+            browser_result = await browser_client.execute_agent(
+                prompt=prompt,
+                agent_config=agent_config,
+                constraints=constraints
             )
             
-            self._add_checkpoint("planning", "Execution plan created", "completed")
-            await asyncio.sleep(0.3)
-            
-            # Checkpoint 3: Execution
-            self._add_checkpoint("execution", "Executing browser actions", "in_progress")
-            
-            # Agent loop: handle tool use
-            max_iterations = 10
-            iteration = 0
-            final_output = None
-            
-            while iteration < max_iterations and self._is_executing:
-                iteration += 1
-                
-                # Check if we should stop
-                if response.stop_reason == "end_turn":
-                    # Extract final text
-                    for block in response.content:
-                        if hasattr(block, 'text'):
-                            final_output = block.text
-                    break
-                
-                # Process tool use
-                if response.stop_reason == "tool_use":
-                    # Execute each tool
-                    for block in response.content:
-                        if block.type == "tool_use":
-                            tool_name = block.name
-                            tool_params = block.input
-                            
-                            # Record tool call
-                            tc = self._add_tool_call(tool_name, tool_params, "in_progress")
-                            
-                            # Execute the tool
-                            try:
-                                result = await self._execute_browser_tool(tool_name, tool_params)
-                                self._update_tool_call(tc, "success", result=result)
-                            except Exception as e:
-                                self._update_tool_call(tc, "error", error_message=str(e))
-                                result = {"status": "error", "message": str(e)}
-                            
-                            # Add tool result to messages
-                            messages.append({"role": "assistant", "content": response.content})
-                            messages.append({
-                                "role": "user",
-                                "content": [
-                                    {
-                                        "type": "tool_result",
-                                        "tool_use_id": block.id,
-                                        "content": json.dumps(result)
-                                    }
-                                ]
-                            })
-                    
-                    # Get next response
-                    response = await self.client.messages.create(
-                        model=self.model,
-                        system=system_prompt,
-                        max_tokens=1024,
-                        tools=self._get_browser_tools(),
-                        messages=messages
+            # Merge browser execution results with our agent tracking
+            if browser_result.get("checkpoints"):
+                for cp_data in browser_result["checkpoints"]:
+                    self._add_checkpoint(
+                        cp_data.get("name", "step"),
+                        cp_data.get("description", ""),
+                        cp_data.get("status", "completed")
                     )
-                else:
-                    break
             
-            self._add_checkpoint("execution", "Browser actions completed", "completed")
-            await asyncio.sleep(0.3)
+            if browser_result.get("tool_calls"):
+                for tc_data in browser_result["tool_calls"]:
+                    self._add_tool_call(
+                        tc_data.get("tool", "action"),
+                        tc_data.get("args", {}),
+                        tc_data.get("status", "success")
+                    )
             
-            # Checkpoint 4: Completion
-            self._add_checkpoint("completion", "Task completed successfully", "completed")
+            # Final checkpoint
+            if browser_result.get("success"):
+                self._add_checkpoint("completion", "Task completed successfully", "completed")
+            else:
+                self._add_checkpoint("error", f"Task failed: {browser_result.get('error', 'Unknown error')}", "error")
             
             execution_time = time.time() - start_time
             
             return AgentResult(
-                success=True,
-                output=final_output,
+                success=browser_result.get("success", False),
+                output=browser_result.get("output_data", {}),
                 execution_time=execution_time,
                 tool_calls=self._tool_calls,
-                checkpoints=self._checkpoints
+                checkpoints=self._checkpoints,
+                screenshots=browser_result.get("screenshots", [])
             )
         
         except Exception as e:
@@ -237,7 +191,8 @@ class AnthropicAgent(BaseAgent):
                 error_message=str(e),
                 execution_time=execution_time,
                 tool_calls=self._tool_calls,
-                checkpoints=self._checkpoints
+                checkpoints=self._checkpoints,
+                screenshots=[]
             )
         finally:
             self._is_executing = False

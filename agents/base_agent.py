@@ -37,12 +37,15 @@ class AgentResult:
     execution_time: float = 0.0
     tool_calls: List[ToolCall] = None
     checkpoints: List[Checkpoint] = None
+    screenshots: List[Dict[str, Any]] = None  # List of screenshot dicts with base64 data
     
     def __post_init__(self):
         if self.tool_calls is None:
             self.tool_calls = []
         if self.checkpoints is None:
             self.checkpoints = []
+        if self.screenshots is None:
+            self.screenshots = []
 
 
 class BaseAgent(ABC):
