@@ -59,37 +59,33 @@ class BrowserToolExecutor:
     
     async def initialize(self):
         """Initialize the browser connection."""
+        if not self.connect_url:
+            raise Exception(
+                "BrowserBase connection required. "
+                "Local Playwright not supported in cloud deployments. "
+                "Please configure BROWSERBASE_API_KEY and BROWSERBASE_PROJECT_ID."
+            )
+        
         self.playwright = await async_playwright().start()
         
-        if self.connect_url:
-            # Connect to BrowserBase via CDP
-            self.browser = await self.playwright.chromium.connect_over_cdp(
-                self.connect_url
-            )
-            # Get default context from BrowserBase
-            contexts = self.browser.contexts
-            if contexts:
-                self.context = contexts[0]
-                pages = self.context.pages
-                self.page = pages[0] if pages else await self.context.new_page()
-            else:
-                raise Exception("No browser context available from BrowserBase")
+        # Connect to BrowserBase via CDP
+        self.browser = await self.playwright.chromium.connect_over_cdp(
+            self.connect_url
+        )
+        
+        # Get default context from BrowserBase
+        contexts = self.browser.contexts
+        if contexts:
+            self.context = contexts[0]
+            pages = self.context.pages
+            self.page = pages[0] if pages else await self.context.new_page()
         else:
-            # Launch local browser for testing
-            self.browser = await self.playwright.chromium.launch(headless=True)
-            self.context = await self.browser.new_context()
-            self.page = await self.context.new_page()
+            raise Exception("No browser context available from BrowserBase")
     
     async def cleanup(self):
         """Cleanup browser resources."""
-        if self.page:
-            await self.page.close()
-        if self.context and not self.connect_url:
-            # Don't close context if connected to BrowserBase
-            await self.context.close()
-        if self.browser and not self.connect_url:
-            # Don't close browser if connected to BrowserBase
-            await self.browser.close()
+        # Note: For BrowserBase, we don't close page/context/browser
+        # as they're managed by BrowserBase and closed via their API
         if self.playwright:
             await self.playwright.stop()
     
