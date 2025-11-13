@@ -9,6 +9,7 @@ import os
 import asyncio
 from typing import Dict, Any
 from agent_executor import AgentExecutor
+from vnc_manager import ensure_vnc_running, get_vnc_manager
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -49,10 +50,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # Health check endpoint
         if action == "health_check":
+            vnc_available = ensure_vnc_running()
             return create_response(200, {
                 "status": "healthy",
                 "message": "Lambda function is running",
-                "playwright_available": check_playwright_available()
+                "playwright_available": check_playwright_available(),
+                "vnc_available": vnc_available,
+                "vnc_port": get_vnc_manager().port if vnc_available else None
             })
         
         # Validate required fields
@@ -79,15 +83,35 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 agent_config["api_key"] = api_key
         
         constraints = body.get("constraints", {})
+        enable_vnc = body.get("enable_vnc", True)  # Enable VNC by default
+        
+        # Start VNC if requested
+        vnc_url = None
+        if enable_vnc:
+            if ensure_vnc_running():
+                # Get Lambda Function URL from environment
+                lambda_url = os.environ.get('AWS_LAMBDA_FUNCTION_URL', os.environ.get('LAMBDA_FUNCTION_URL', 'http://localhost:6080'))
+                vnc_manager = get_vnc_manager()
+                vnc_url = vnc_manager.get_websocket_url(lambda_url)
+            else:
+                print("Warning: Failed to start VNC, continuing without streaming")
         
         # Execute agent task
         executor = AgentExecutor(agent_config)
         result = asyncio.run(executor.execute(prompt, constraints))
         
-        return create_response(200, {
+        # Build response
+        response_body = {
             "status": "success",
             "result": result
-        })
+        }
+        
+        # Add VNC URL if available
+        if vnc_url:
+            response_body["vnc_url"] = vnc_url
+            response_body["session_id"] = context.request_id if context else "local-test"
+        
+        return create_response(200, response_body)
     
     except json.JSONDecodeError as e:
         return create_response(400, {
