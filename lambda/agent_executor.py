@@ -68,6 +68,11 @@ class AgentExecutor:
             async with async_playwright() as p:
                 # Always use headless mode for screenshot polling
                 # VNC mode is disabled - we use periodic screenshots instead
+                # Explicitly unset DISPLAY to ensure headless mode works
+                if 'DISPLAY' in os.environ:
+                    print(f"⚠️ Unsetting DISPLAY={os.environ.get('DISPLAY')} for headless mode")
+                    del os.environ['DISPLAY']
+                
                 print("🎬 Launching browser in headless mode (screenshot polling enabled)")
                 
                 self.browser = await p.chromium.launch(
