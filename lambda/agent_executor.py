@@ -75,27 +75,30 @@ class AgentExecutor:
                 
                 print("🎬 Launching browser in headless mode (screenshot polling enabled)")
                 
+                # Launch with minimal args - --single-process and --no-zygote can cause crashes
                 self.browser = await p.chromium.launch(
                     headless=True,
                     args=[
                         '--no-sandbox',
                         '--disable-setuid-sandbox',
                         '--disable-dev-shm-usage',
-                        '--disable-gpu',
-                        '--no-first-run',
-                        '--no-zygote',
-                        '--single-process',
-                        '--disable-extensions'
+                        '--disable-gpu'
                     ]
                 )
                 
+                print(f"✅ Browser launched successfully")
+                
                 # Create browser context with reasonable defaults
+                print("🔧 Creating browser context...")
                 context = await self.browser.new_context(
                     viewport={'width': 1280, 'height': 720},
                     user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 )
+                print("✅ Browser context created")
                 
+                print("📄 Creating new page...")
                 self.page = await context.new_page()
+                print("✅ Page created successfully")
                 
                 self._add_checkpoint("browser_ready", "Browser initialized successfully")
                 
