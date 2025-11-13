@@ -227,14 +227,24 @@ def render_race_view():
     if st.session_state.race_active and not hasattr(st.session_state, 'race_executing'):
         st.session_state.race_executing = True
         
-        # Run the race asynchronously
-        try:
-            result_a, result_b, duration = asyncio.run(orchestrator.start_race())
-            
-            # Store results
-            st.session_state.race_results = (result_a, result_b, duration)
-            st.session_state.race_active = False
-            st.session_state.race_executing = False
+        # Show a spinner while executing
+        with st.spinner("🏁 Race executing... This may take 10-30 seconds"):
+            # Run the race asynchronously with timeout
+            try:
+                async def run_with_timeout():
+                    return await asyncio.wait_for(
+                        orchestrator.start_race(),
+                        timeout=60.0  # 60 second timeout
+                    )
+                
+                result_a, result_b, duration = asyncio.run(run_with_timeout())
+                
+                # Store results
+                st.session_state.race_results = (result_a, result_b, duration)
+                st.session_state.race_active = False
+                st.session_state.race_executing = False
+                
+                st.success(f"✅ Race completed in {duration:.1f}s!")
             
             # Save executions to database
             if st.session_state.race_db_id:
@@ -273,12 +283,28 @@ def render_race_view():
                 except Exception as e:
                     st.warning(f"Failed to save race results to database: {str(e)}")
             
-            st.rerun()
-        except Exception as e:
-            st.error(f"Race execution failed: {str(e)}")
-            st.session_state.race_active = False
-            st.session_state.race_executing = False
-            return
+                
+                st.rerun()
+                
+            except asyncio.TimeoutError:
+                st.error("⏰ Race timed out after 60 seconds. This may indicate:")
+                st.error("• BrowserBase session is slow or stuck")
+                st.error("• Network connectivity issues")
+                st.error("• Complex task taking too long")
+                st.info("💡 Try: Click Reset and start a new race with a simpler task")
+                st.session_state.race_active = False
+                st.session_state.race_executing = False
+                return
+                
+            except Exception as e:
+                st.error(f"❌ Race execution failed: {str(e)}")
+                st.error(f"Error type: {type(e).__name__}")
+                with st.expander("🐛 Debug Info"):
+                    import traceback
+                    st.code(traceback.format_exc())
+                st.session_state.race_active = False
+                st.session_state.race_executing = False
+                return
     
     # Get agent status
     status = orchestrator.get_agent_status()
