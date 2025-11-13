@@ -3,6 +3,15 @@ Web Agent Arena - Main Streamlit Application
 A live web agent comparison platform for head-to-head agent battles.
 """
 
+# Check dependencies first
+try:
+    import check_dependencies  # noqa: F401
+except SystemExit:
+    # Dependencies missing - error message already shown
+    import streamlit as st
+    st.error("❌ Missing required packages. See console output for details.")
+    st.stop()
+
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
