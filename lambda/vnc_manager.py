@@ -52,21 +52,27 @@ class VNCManager:
             return True
         
         try:
-            # Start Xvfb (Virtual X server)
-            logger.info(f"Starting Xvfb on display {self.display}")
-            self.xvfb_process = subprocess.Popen([
-                'Xvfb', self.display,
-                '-screen', '0', '1920x1080x24',
-                '-ac',  # Disable access control
-                '-nolisten', 'tcp'  # Don't listen on TCP
+            # Start Xvnc (TigerVNC) - acts as both virtual X server AND VNC server
+            logger.info(f"Starting TigerVNC (Xvnc) on display {self.display}, port {self.port}")
+            self.vnc_process = subprocess.Popen([
+                'Xvnc', self.display,
+                '-rfbport', str(self.port),
+                '-SecurityTypes', 'None',  # No password (Lambda is already secured)
+                '-AlwaysShared',  # Allow multiple clients
+                '-desktop', 'WebAgentArena',
+                '-geometry', '1920x1080',
+                '-depth', '24',
+                '-ac'  # Disable access control
             ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             
-            # Wait for Xvfb to initialize
-            time.sleep(1)
+            # Wait for Xvnc to initialize
+            time.sleep(2)
             
-            # Check if Xvfb started successfully
-            if self.xvfb_process.poll() is not None:
-                logger.error(f"Xvfb failed to start: {self.xvfb_process.stderr.read()}")
+            # Check if Xvnc started successfully
+            if self.vnc_process.poll() is not None:
+                stderr_output = self.vnc_process.stderr.read().decode('utf-8', errors='ignore')
+                logger.error(f"Xvnc failed to start: {stderr_output}")
+                self.stop()
                 return False
             
             # Set DISPLAY environment variable
@@ -78,29 +84,7 @@ class VNCManager:
             subprocess.Popen([
                 'fluxbox', '-display', self.display
             ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            time.sleep(0.5)
-            
-            # Start x11vnc
-            logger.info(f"Starting x11vnc on port {self.port}")
-            self.vnc_process = subprocess.Popen([
-                'x11vnc',
-                '-display', self.display,
-                '-rfbport', str(self.port),
-                '-forever',  # Keep running after client disconnects
-                '-shared',   # Allow multiple clients
-                '-nopw',     # No password (Lambda is already secured)
-                '-quiet',    # Reduce log verbosity
-                '-noxdamage' # Disable XDamage (can cause issues in Xvfb)
-            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            
-            # Wait for VNC server to initialize
             time.sleep(1)
-            
-            # Check if x11vnc started successfully
-            if self.vnc_process.poll() is not None:
-                logger.error(f"x11vnc failed to start: {self.vnc_process.stderr.read()}")
-                self.stop()
-                return False
             
             # Start websockify for web access
             logger.info(f"Starting websockify on port {self.novnc_port}")
@@ -116,12 +100,13 @@ class VNCManager:
             
             # Check if websockify started successfully
             if self.websockify_process.poll() is not None:
-                logger.error(f"websockify failed to start: {self.websockify_process.stderr.read()}")
+                stderr_output = self.websockify_process.stderr.read().decode('utf-8', errors='ignore')
+                logger.error(f"websockify failed to start: {stderr_output}")
                 self.stop()
                 return False
             
             self._started = True
-            logger.info("✅ All VNC services started successfully")
+            logger.info("✅ All VNC services started successfully (TigerVNC + websockify)")
             return True
             
         except Exception as e:
@@ -135,8 +120,7 @@ class VNCManager:
         
         for process_name, process in [
             ('websockify', self.websockify_process),
-            ('x11vnc', self.vnc_process),
-            ('Xvfb', self.xvfb_process)
+            ('Xvnc', self.vnc_process)
         ]:
             if process:
                 try:
@@ -179,7 +163,7 @@ class VNCManager:
             return False
         
         # Check if all processes are still running
-        for process in [self.xvfb_process, self.vnc_process, self.websockify_process]:
+        for process in [self.vnc_process, self.websockify_process]:
             if process and process.poll() is not None:
                 logger.warning("One or more VNC processes died")
                 self._started = False

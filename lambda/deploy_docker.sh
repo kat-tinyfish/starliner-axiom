@@ -73,7 +73,7 @@ RUN dnf install -y \
 # Install VNC Server and Xvfb for browser streaming
 RUN dnf install -y \
     xorg-x11-server-Xvfb \
-    x11vnc \
+    tigervnc-server \
     fluxbox \
     git \
     && dnf clean all
