@@ -54,7 +54,7 @@ class AnthropicAgent(BaseAgent):
     Uses Claude to think, plan, and orchestrate browser automation via tool use.
     """
     
-    def __init__(self, agent_id: str, name: str, api_key: str, model: str = "claude-3-5-sonnet-20240620"):
+    def __init__(self, agent_id: str, name: str, api_key: str, model: str = "claude-sonnet-4-5-20250929"):
         super().__init__(agent_id, name, api_key)
         self.model = model
         self._is_executing = False
