@@ -184,6 +184,13 @@ class BrowserBaseClient:
             session_data = await self.create_session()
             session_id = session_data["id"]
             
+            # BrowserBase returns connectUrl directly in the creation response
+            debug_url = session_data.get("connectUrl")
+            
+            if not debug_url:
+                print(f"⚠️ Session creation response: {session_data.keys()}")
+                raise Exception(f"No CDP connection URL in session creation. Available fields: {list(session_data.keys())}")
+            
             checkpoints.append({
                 "name": "browser_ready",
                 "description": "Browser session created successfully",
@@ -191,14 +198,7 @@ class BrowserBaseClient:
                 "status": "completed"
             })
             
-            # Get CDP connection URL for Playwright
-            session_info = await self.get_session(session_id)
-            debug_url = session_info.get("debuggerFullscreenUrl") or session_info.get("debuggerUrl")
-            
-            if not debug_url:
-                raise Exception("No CDP connection URL available for session")
-            
-            print(f"🔗 Connecting to remote browser via CDP: {debug_url[:50]}...")
+            print(f"🔗 Connecting to remote browser via CDP: {debug_url[:60]}...")
             
             # Connect Playwright to BrowserBase remote browser
             try:
