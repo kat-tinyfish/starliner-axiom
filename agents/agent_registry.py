@@ -39,10 +39,10 @@ class AgentRegistry:
         "claude-agent": AgentConfig(
             agent_id="claude-agent",
             name="claude_web_agent",
-            display_name="Claude 3.5 Sonnet Agent",
+            display_name="Claude Sonnet 4.5 Agent",
             api_provider="anthropic",
-            model="claude-3-5-sonnet-20241022",
-            description="Anthropic's Claude 3.5 Sonnet with advanced reasoning"
+            model="claude-sonnet-4-5",
+            description="Anthropic's Claude Sonnet 4.5 with advanced reasoning and tool use"
         ),
         "gemini-agent": AgentConfig(
             agent_id="gemini-agent",
