@@ -56,10 +56,10 @@ class AgentRegistry:
             agent_id="tinyfish-agent",
             name="tinyfish_agent",
             display_name="TinyFish Agent",
-            api_provider="custom",
-            endpoint="https://api.tinyfish.ai/v1/agent",
-            description="TinyFish's custom web agent with specialized capabilities",
-            codebase_url="https://github.com/your-org/tinyfish-agent"
+            api_provider="tinyfish",
+            model="tinyfish-v1",
+            description="TinyFish Gemini-powered web agent with production API",
+            endpoint="http://54.67.10.91:8000"
         )
     }
     
@@ -131,9 +131,9 @@ class AgentRegistry:
         elif config.api_provider == "google":
             from agents.implementations.google_agent import GoogleAgent
             return GoogleAgent(agent_id, config.display_name, api_key, config.model)
-        elif config.api_provider == "custom":
+        elif config.api_provider == "tinyfish":
             from agents.implementations.tinyfish.agent import TinyFishAgent
-            return TinyFishAgent(agent_id, config.display_name, api_key, config.endpoint)
+            return TinyFishAgent(agent_id, config.display_name, api_key)
         else:
             raise ValueError(f"Unknown API provider: {config.api_provider}")
 
