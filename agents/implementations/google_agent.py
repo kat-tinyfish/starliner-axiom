@@ -110,6 +110,7 @@ class GoogleAgent(BaseAgent):
                 self._add_checkpoint("planning", "Gemini analyzing task and planning approach", "completed")
                 
                 # Start chat session with automatic function calling disabled
+                # We manually handle function execution via BrowserToolExecutor
                 chat = self.model_instance.start_chat(enable_automatic_function_calling=False)
                 
                 # Send initial prompt
@@ -130,12 +131,22 @@ class GoogleAgent(BaseAgent):
                     
                     # Ask Gemini what to do next
                     try:
+                        # Ensure message_to_send is a string (not an object)
+                        if not isinstance(message_to_send, str):
+                            print(f"   ⚠️  Warning: message_to_send is not a string: {type(message_to_send)}")
+                            message_to_send = str(message_to_send)
+                        
                         response = await asyncio.to_thread(
                             chat.send_message,
                             message_to_send
                         )
                     except Exception as e:
-                        print(f"   ❌ Error sending message to Gemini: {str(e)}")
+                        error_msg = str(e)
+                        error_type = type(e).__name__
+                        print(f"   ❌ Error sending message to Gemini: {error_type}: {error_msg}")
+                        print(f"   📝 Message type: {type(message_to_send)}, Content: {str(message_to_send)[:100]}")
+                        import traceback
+                        traceback.print_exc()
                         raise
                     
                     # Reset message_to_send for next iteration (will be set if function calls happen)
@@ -251,9 +262,46 @@ class GoogleAgent(BaseAgent):
                                 print(f"   ⚠️  Error: {result.error}")
                         
                         # Send function results back to Gemini
-                        # Create content with function response parts
-                        import google.generativeai as genai
-                        message_to_send = genai.protos.Content(parts=function_responses)
+                        # Build a JSON text message describing the function results
+                        # (chat.send_message accepts strings, not protobuf objects)
+                        function_results_summary = []
+                        for fr in function_responses:
+                            try:
+                                if hasattr(fr, 'function_response'):
+                                    func_name = fr.function_response.name
+                                    func_response = fr.function_response.response
+                                    
+                                    # Format as readable text
+                                    if isinstance(func_response, dict):
+                                        success = func_response.get('success', False)
+                                        data = func_response.get('data', {})
+                                        error = func_response.get('error')
+                                        
+                                        if success:
+                                            result_text = f"Function {func_name} executed successfully."
+                                            if data:
+                                                # Include key data points
+                                                if isinstance(data, dict):
+                                                    data_summary = ", ".join([f"{k}: {v}" for k, v in list(data.items())[:3]])
+                                                    if data_summary:
+                                                        result_text += f" Result: {data_summary}"
+                                                else:
+                                                    result_text += f" Result: {str(data)[:100]}"
+                                        else:
+                                            result_text = f"Function {func_name} failed: {error or 'Unknown error'}"
+                                        
+                                        function_results_summary.append(result_text)
+                                    else:
+                                        function_results_summary.append(f"Function {func_name}: {str(func_response)[:200]}")
+                            except Exception as e:
+                                print(f"   ⚠️  Warning: Could not format function response: {e}")
+                                function_results_summary.append("Function executed (details unavailable)")
+                        
+                        # Send as text message for next iteration
+                        if function_results_summary:
+                            message_to_send = "\n\n".join(function_results_summary) + "\n\nContinue with the task."
+                        else:
+                            message_to_send = "Function execution completed. Continue with the task."
                     
                     else:
                         # Gemini provided text response (task complete)
