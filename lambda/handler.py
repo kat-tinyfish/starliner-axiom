@@ -109,7 +109,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Add VNC URL if available
         if vnc_url:
             response_body["vnc_url"] = vnc_url
-            response_body["session_id"] = context.request_id if context else "local-test"
+            response_body["session_id"] = context.aws_request_id if context else "local-test"
         
         return create_response(200, response_body)
     
