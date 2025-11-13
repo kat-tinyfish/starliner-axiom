@@ -109,7 +109,7 @@ class GoogleAgent(BaseAgent):
                 # Checkpoint 3: Planning
                 self._add_checkpoint("planning", "Gemini analyzing task and planning approach", "completed")
                 
-                # Start chat session
+                # Start chat session with automatic function calling disabled
                 chat = self.model_instance.start_chat(enable_automatic_function_calling=False)
                 
                 # Send initial prompt
@@ -118,96 +118,152 @@ class GoogleAgent(BaseAgent):
                 # Tool calling loop - let Gemini orchestrate
                 max_iterations = 15
                 final_response = None
-                current_prompt = user_prompt
+                message_to_send = user_prompt
                 
                 for iteration in range(max_iterations):
                     print(f"\n🤖 Gemini Iteration {iteration + 1}/{max_iterations}")
                     
+                    # Skip if no message to send (shouldn't happen, but safety check)
+                    if message_to_send is None and iteration > 0:
+                        print("   ⚠️  No message to send, breaking loop")
+                        break
+                    
                     # Ask Gemini what to do next
-                    response = await asyncio.to_thread(
-                        chat.send_message,
-                        current_prompt
-                    )
+                    try:
+                        response = await asyncio.to_thread(
+                            chat.send_message,
+                            message_to_send
+                        )
+                    except Exception as e:
+                        print(f"   ❌ Error sending message to Gemini: {str(e)}")
+                        raise
+                    
+                    # Reset message_to_send for next iteration (will be set if function calls happen)
+                    message_to_send = None
                     
                     # Check if Gemini wants to use functions
-                    if response.candidates[0].content.parts:
-                        function_calls = [
-                            part.function_call
-                            for part in response.candidates[0].content.parts
-                            if hasattr(part, 'function_call') and part.function_call
-                        ]
+                    if not response.candidates:
+                        print("   ⚠️  No candidates in response")
+                        break
+                    
+                    candidate = response.candidates[0]
+                    if not hasattr(candidate, 'content') or not candidate.content:
+                        print("   ⚠️  No content in candidate")
+                        break
+                    
+                    if not candidate.content.parts:
+                        print("   ⚠️  No parts in content")
+                        break
+                    
+                    function_calls = [
+                        part.function_call
+                        for part in candidate.content.parts
+                        if hasattr(part, 'function_call') and part.function_call
+                    ]
+                    
+                    if function_calls:
+                        # Gemini has chosen tools to execute
+                        print(f"   🔧 Gemini chose {len(function_calls)} tool(s)")
                         
-                        if function_calls:
-                            # Gemini has chosen tools to execute
-                            print(f"   🔧 Gemini chose {len(function_calls)} tool(s)")
+                        # Execute each function call and collect results
+                        function_responses = []
+                        
+                        for function_call in function_calls:
+                            tool_name = function_call.name
                             
-                            # Execute each function call and collect results
-                            function_responses = []
+                            # Extract args - Gemini uses protobuf Struct which needs conversion
+                            tool_args = {}
+                            try:
+                                if not function_call.args:
+                                    tool_args = {}
+                                else:
+                                    # Try multiple methods to extract args
+                                    # Method 1: Direct dict conversion
+                                    try:
+                                        tool_args = dict(function_call.args)
+                                    except (TypeError, AttributeError, ValueError):
+                                        # Method 2: Protobuf MessageToDict
+                                        try:
+                                            from google.protobuf.json_format import MessageToDict
+                                            tool_args = MessageToDict(function_call.args)
+                                        except:
+                                            # Method 3: Access as dict-like object
+                                            try:
+                                                tool_args = {k: v for k, v in function_call.args.items()}
+                                            except:
+                                                # Method 4: Try accessing fields directly
+                                                try:
+                                                    # Protobuf struct fields
+                                                    if hasattr(function_call.args, 'fields'):
+                                                        tool_args = {k: v for k, v in function_call.args.fields.items()}
+                                                    else:
+                                                        tool_args = {}
+                                                except:
+                                                    tool_args = {}
+                            except Exception as e:
+                                print(f"   ⚠️  Warning: Could not extract function args: {e}")
+                                tool_args = {}
                             
-                            for function_call in function_calls:
-                                tool_name = function_call.name
-                                tool_args = dict(function_call.args)
-                                
-                                print(f"   ⚙️  Executing: {tool_name}({json.dumps(tool_args, indent=2)})")
-                                
-                                # Execute the tool via browser executor
-                                result = await executor.execute_tool(tool_name, tool_args)
-                                
-                                # Track tool call
-                                self._add_tool_call(
-                                    tool=tool_name,
-                                    args=tool_args,
-                                    status="success" if result.success else "error"
-                                )
-                                
-                                # Track screenshot
-                                if result.screenshot:
-                                    self._screenshots.append({
-                                        "index": len(self._screenshots),
-                                        "timestamp": time.time(),
-                                        "elapsed": time.time() - start_time,
-                                        "data": result.screenshot
-                                    })
-                                
-                                # Prepare function response for Gemini
-                                import google.generativeai as genai
-                                function_responses.append(
-                                    genai.protos.Part(
-                                        function_response=genai.protos.FunctionResponse(
-                                            name=tool_name,
-                                            response={
-                                                "success": result.success,
-                                                "data": result.data,
-                                                "error": result.error,
-                                                "execution_time": result.execution_time
-                                            }
-                                        )
-                                    )
-                                )
-                                
-                                print(f"   ✅ Result: {result.success}")
-                                if result.error:
-                                    print(f"   ⚠️  Error: {result.error}")
+                            print(f"   ⚙️  Executing: {tool_name}({json.dumps(tool_args, indent=2)})")
                             
-                            # Send function results back to Gemini
+                            # Execute the tool via browser executor
+                            result = await executor.execute_tool(tool_name, tool_args)
+                            
+                            # Track tool call
+                            self._add_tool_call(
+                                tool=tool_name,
+                                args=tool_args,
+                                status="success" if result.success else "error"
+                            )
+                            
+                            # Track screenshot
+                            if result.screenshot:
+                                self._screenshots.append({
+                                    "index": len(self._screenshots),
+                                    "timestamp": time.time(),
+                                    "elapsed": time.time() - start_time,
+                                    "data": result.screenshot
+                                })
+                            
+                            # Prepare function response for Gemini
                             import google.generativeai as genai
-                            current_prompt = genai.protos.Content(parts=function_responses)
+                            
+                            # Create function response part
+                            response_data = {
+                                "success": result.success,
+                                "data": result.data,
+                                "error": result.error,
+                                "execution_time": result.execution_time
+                            }
+                            
+                            # Create function response part using protobuf
+                            function_response = genai.protos.FunctionResponse(
+                                name=tool_name,
+                                response=response_data
+                            )
+                            
+                            function_responses.append(
+                                genai.protos.Part(function_response=function_response)
+                            )
+                            
+                            print(f"   ✅ Result: {result.success}")
+                            if result.error:
+                                print(f"   ⚠️  Error: {result.error}")
                         
-                        else:
-                            # Gemini provided text response (task complete)
-                            print("   ✅ Gemini says task is complete!")
-                            text_parts = [
-                                part.text
-                                for part in response.candidates[0].content.parts
-                                if hasattr(part, 'text')
-                            ]
-                            final_response = '\n'.join(text_parts)
-                            break
+                        # Send function results back to Gemini
+                        # Create content with function response parts
+                        import google.generativeai as genai
+                        message_to_send = genai.protos.Content(parts=function_responses)
                     
                     else:
-                        # No content parts, task complete
-                        print("   ✅ Gemini finished")
-                        final_response = "Task completed"
+                        # Gemini provided text response (task complete)
+                        print("   ✅ Gemini says task is complete!")
+                        text_parts = [
+                            part.text
+                            for part in candidate.content.parts
+                            if hasattr(part, 'text')
+                        ]
+                        final_response = '\n'.join(text_parts) if text_parts else "Task completed"
                         break
                     
                     # Check if we should stop
