@@ -33,6 +33,7 @@ env/
 .env
 .env.local
 .streamlit/secrets.toml
+streamlit_secrets.toml
 
 # IDE
 .vscode/
