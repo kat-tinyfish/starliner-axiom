@@ -91,3 +91,10 @@ recordings/
 build_docs/
 
 
+
+# Streamlit Cloud deployment logs
+logs-*.txt
+
+# Test/scratch files
+scratch.txt
+test_app_simple.py
