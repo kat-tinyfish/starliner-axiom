@@ -79,10 +79,10 @@ class VNCManager:
             os.environ['DISPLAY'] = self.display
             logger.info(f"Set DISPLAY={self.display}")
             
-            # Start websockify for web access
+            # Start websockify for web access (run as Python module)
             logger.info(f"Starting websockify on port {self.novnc_port}")
             self.websockify_process = subprocess.Popen([
-                'websockify',
+                'python3', '-m', 'websockify',
                 '--web', '/opt/noVNC',
                 str(self.novnc_port),
                 f'localhost:{self.port}'
