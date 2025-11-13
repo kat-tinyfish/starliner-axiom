@@ -132,19 +132,76 @@ class GoogleAgent(BaseAgent):
                 for iteration in range(max_iterations):
                     print(f"\n🤖 Gemini Iteration {iteration + 1}/{max_iterations}")
                     
-                    # Generate content with Gemini
-                    try:
-                        response = await asyncio.to_thread(
-                            self.client.models.generate_content,
-                            model=self.model,
-                            contents=contents,
-                            config=config
-                        )
-                    except Exception as e:
-                        print(f"   ❌ Error calling Gemini API: {type(e).__name__}: {str(e)}")
-                        import traceback
-                        traceback.print_exc()
-                        raise
+                    # Generate content with Gemini (with retry logic for rate limits)
+                    max_retries = 3
+                    retry_delay = 5  # Start with 5 seconds
+                    response = None
+                    
+                    for retry_attempt in range(max_retries):
+                        try:
+                            response = await asyncio.to_thread(
+                                self.client.models.generate_content,
+                                model=self.model,
+                                contents=contents,
+                                config=config
+                            )
+                            break  # Success, exit retry loop
+                            
+                        except Exception as e:
+                            error_str = str(e)
+                            error_type = type(e).__name__
+                            
+                            # Check if it's a rate limit error (429)
+                            is_rate_limit = (
+                                "429" in error_str or
+                                "RESOURCE_EXHAUSTED" in error_str or
+                                "quota" in error_str.lower() or
+                                "rate limit" in error_str.lower()
+                            )
+                            
+                            if is_rate_limit and retry_attempt < max_retries - 1:
+                                # Try to extract retry delay from error
+                                retry_delay_seconds = retry_delay
+                                try:
+                                    import re
+                                    # Look for retry delay in error message
+                                    delay_match = re.search(r'retry.*?(\d+(?:\.\d+)?)\s*s', error_str, re.IGNORECASE)
+                                    if delay_match:
+                                        retry_delay_seconds = float(delay_match.group(1)) + 2  # Add 2s buffer
+                                except:
+                                    pass
+                                
+                                print(f"   ⚠️  Rate limit hit (attempt {retry_attempt + 1}/{max_retries})")
+                                print(f"   ⏳ Waiting {retry_delay_seconds:.1f}s before retry...")
+                                await asyncio.sleep(retry_delay_seconds)
+                                
+                                # Exponential backoff for next retry
+                                retry_delay *= 2
+                                continue
+                            else:
+                                # Not a rate limit, or out of retries
+                                print(f"   ❌ Error calling Gemini API: {error_type}: {error_str[:200]}")
+                                
+                                if is_rate_limit:
+                                    # Rate limit error - provide helpful message
+                                    error_message = (
+                                        "Google Gemini API rate limit exceeded. "
+                                        "You've hit the free tier quota limit. "
+                                        "Options:\n"
+                                        "1. Wait a few minutes and try again\n"
+                                        "2. Upgrade your Google AI Studio plan\n"
+                                        "3. Check your quota at: https://ai.dev/usage?tab=rate-limit"
+                                    )
+                                    self._add_checkpoint("rate_limit", error_message, "error")
+                                    raise Exception(error_message) from e
+                                
+                                # Other errors - raise as-is
+                                import traceback
+                                traceback.print_exc()
+                                raise
+                    
+                    if response is None:
+                        raise Exception("Failed to get response from Gemini API after retries")
                     
                     # Add assistant response to history
                     if not response.candidates:
