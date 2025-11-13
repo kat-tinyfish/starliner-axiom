@@ -103,11 +103,11 @@ class TinyFishAgent(BaseAgent):
             
             execution_time = time.time() - start_time
             
-            # Extract output data
+            # Extract output data (match format of other agents)
             output_data = {
-                "response": final_response or "Task completed",
-                "events_processed": event_count,
-                "session_id": self.session_id
+                "summary": final_response or "Task completed",
+                "iterations": event_count,
+                "tool_calls_count": len(self.get_tool_calls())
             }
             
             return AgentResult(
