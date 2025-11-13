@@ -39,7 +39,7 @@ Run this SQL in Supabase before deploying:
 UPDATE agents 
 SET 
     api_provider = 'tinyfish',
-    description = 'TinyFish Gemini-powered web agent with production API',
+    description = 'TinyFish production API',
     updated_at = NOW()
 WHERE name = 'tinyfish_agent';
 
