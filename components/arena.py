@@ -372,7 +372,7 @@ def render_agent_panel(title: str, agent_status: dict, agent):
                 screenshot_image = Image.open(BytesIO(screenshot_bytes))
                 
                 # Display screenshot
-                st.image(screenshot_image, use_column_width=True)
+                st.image(screenshot_image, use_container_width=True)
                 
                 # Show metadata
                 elapsed = latest_screenshot.get('elapsed', 0)

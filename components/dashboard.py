@@ -87,7 +87,7 @@ def render_leaderboard():
     # Display table
     st.dataframe(
         df,
-        use_column_width=True,
+        use_container_width=True,
         hide_index=True
     )
     
