@@ -289,6 +289,11 @@ def render_race_view():
     with col_b:
         render_agent_panel("Agent B", status["agent_b"], orchestrator.agent_b)
     
+    # Show voting interface immediately when race starts
+    if st.session_state.race_active:
+        st.markdown("---")
+        render_voting_interface()
+    
     # Auto-refresh while race is active
     if st.session_state.race_active:
         time.sleep(0.5)
@@ -356,9 +361,93 @@ def render_agent_panel(title: str, agent_status: dict, agent):
             st.progress(progress, text=checkpoint_emojis)
 
 
+def render_voting_interface():
+    """
+    Render the voting interface (shown during and after race).
+    """
+    if not st.session_state.race_orchestrator:
+        return
+    
+    orchestrator = st.session_state.race_orchestrator
+    
+    st.markdown("### 🗳️ Which agent is performing better?")
+    st.caption("You can vote anytime during or after the race")
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    with col1:
+        if st.button("👈 Agent A", use_container_width=True, type="primary", key="vote_a"):
+            # Save vote to database
+            if st.session_state.get('race_db_id'):
+                try:
+                    from database.operations import get_db
+                    db_ops = get_db()
+                    
+                    # Get agent A ID
+                    if orchestrator.agent_a:
+                        agent_data = db_ops.get_agent_by_display_name(orchestrator.agent_a.name)
+                        if agent_data:
+                            db_ops.save_user_preference(
+                                race_id=st.session_state.race_db_id,
+                                preferred_agent_id=agent_data['id'],
+                                preference_type="agent_a"
+                            )
+                            
+                            # Update race status if results are available
+                            if st.session_state.race_results:
+                                _, _, duration = st.session_state.race_results
+                                db_ops.update_race_status(st.session_state.race_db_id, "completed", 
+                                                    duration=duration if duration else None)
+                            
+                            st.success("✅ Vote recorded for Agent A!")
+                            st.balloons()
+                        else:
+                            st.success("✅ Vote recorded for Agent A!")
+                except Exception as e:
+                    st.warning(f"Vote saved locally: {str(e)}")
+            else:
+                st.success("✅ Vote recorded for Agent A!")
+    
+    with col2:
+        st.write("")  # Spacer
+    
+    with col3:
+        if st.button("Agent B 👉", use_container_width=True, type="primary", key="vote_b"):
+            # Save vote to database
+            if st.session_state.get('race_db_id'):
+                try:
+                    from database.operations import get_db
+                    db_ops = get_db()
+                    
+                    # Get agent B ID
+                    if orchestrator.agent_b:
+                        agent_data = db_ops.get_agent_by_display_name(orchestrator.agent_b.name)
+                        if agent_data:
+                            db_ops.save_user_preference(
+                                race_id=st.session_state.race_db_id,
+                                preferred_agent_id=agent_data['id'],
+                                preference_type="agent_b"
+                            )
+                            
+                            # Update race status if results are available
+                            if st.session_state.race_results:
+                                _, _, duration = st.session_state.race_results
+                                db_ops.update_race_status(st.session_state.race_db_id, "completed", 
+                                                    duration=duration if duration else None)
+                            
+                            st.success("✅ Vote recorded for Agent B!")
+                            st.balloons()
+                        else:
+                            st.success("✅ Vote recorded for Agent B!")
+                except Exception as e:
+                    st.warning(f"Vote saved locally: {str(e)}")
+            else:
+                st.success("✅ Vote recorded for Agent B!")
+
+
 def render_results_and_voting():
     """
-    Render race results and voting interface.
+    Render race results (outputs section after race completes).
     """
     if not st.session_state.race_results:
         return
@@ -420,70 +509,7 @@ def render_results_and_voting():
         else:
             st.code("No output", language=None)
     
-    # Voting
-    st.markdown("### 🗳️ Which agent performed better?")
-    col1, col2, col3 = st.columns([1, 1, 1])
-    
-    with col1:
-        if st.button("👈 Agent A", use_container_width=True, type="primary"):
-            # Save vote to database
-            if st.session_state.race_db_id:
-                try:
-                    from database.operations import get_db
-                    db_ops = get_db()
-                    
-                    # Get agent A ID
-                    orchestrator = st.session_state.race_orchestrator
-                    if orchestrator and orchestrator.agent_a:
-                        agent_data = db_ops.get_agent_by_display_name(orchestrator.agent_a.name)
-                        if agent_data:
-                            db_ops.save_user_preference(
-                                race_id=st.session_state.race_db_id,
-                                preferred_agent_id=agent_data['id'],
-                                preference_type="agent_a"
-                            )
-                            
-                            # Update race status
-                            db_ops.update_race_status(st.session_state.race_db_id, "completed", 
-                                                duration=duration if duration else None)
-                            st.success("✅ Vote recorded for Agent A and saved to database!")
-                        else:
-                            st.success("Vote recorded for Agent A!")
-                except Exception as e:
-                    st.warning(f"Vote saved locally but database save failed: {str(e)}")
-            else:
-                st.success("Vote recorded for Agent A!")
-    
-    with col2:
-        st.write("")  # Spacer
-    
-    with col3:
-        if st.button("Agent B 👉", use_container_width=True, type="primary"):
-            # Save vote to database
-            if st.session_state.race_db_id:
-                try:
-                    from database.operations import get_db
-                    db_ops = get_db()
-                    
-                    # Get agent B ID
-                    orchestrator = st.session_state.race_orchestrator
-                    if orchestrator and orchestrator.agent_b:
-                        agent_data = db_ops.get_agent_by_display_name(orchestrator.agent_b.name)
-                        if agent_data:
-                            db_ops.save_user_preference(
-                                race_id=st.session_state.race_db_id,
-                                preferred_agent_id=agent_data['id'],
-                                preference_type="agent_b"
-                            )
-                            
-                            # Update race status
-                            db_ops.update_race_status(st.session_state.race_db_id, "completed",
-                                                duration=duration if duration else None)
-                            st.success("✅ Vote recorded for Agent B and saved to database!")
-                        else:
-                            st.success("Vote recorded for Agent B!")
-                except Exception as e:
-                    st.warning(f"Vote saved locally but database save failed: {str(e)}")
-            else:
-                st.success("Vote recorded for Agent B!")
+    # Voting is now shown during the race, but repeat it here for convenience
+    st.markdown("---")
+    render_voting_interface()
 
