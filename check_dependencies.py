@@ -18,7 +18,7 @@ OPTIONAL_PACKAGES = {
     "aiohttp": "aiohttp",
     "openai": "openai",
     "anthropic": "anthropic",
-    "google.generativeai": "google-generativeai",
+    "google.genai": "google-genai",
     "playwright.async_api": "playwright",
     "PIL": "pillow",
     "pydantic": "pydantic",
@@ -66,8 +66,8 @@ if missing_optional:
         print("  • GPT-4 agent requires openai")
     if "anthropic" in missing_optional:
         print("  • Claude agent requires anthropic")
-    if "google-generativeai" in missing_optional:
-        print("  • Gemini agent requires google-generativeai")
+    if "google-genai" in missing_optional:
+        print("  • Gemini agent requires google-genai")
     if "playwright" in missing_optional:
         print("  • Browser automation requires playwright")
     
