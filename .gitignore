@@ -89,6 +89,8 @@ recordings/
 
 #build artifacts
 build_docs/
+STREAMLIT_CLOUD_SECRETS.md
+
 
 
 
