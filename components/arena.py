@@ -389,7 +389,7 @@ def render_agent_panel(title: str, agent_status: dict, agent):
         if agent_status["current_checkpoint"]:
             cp = agent_status["current_checkpoint"]
             status_icon = {"completed": "✅", "in_progress": "⏳", "pending": "⏸️", "error": "❌"}
-            st.info(f"{status_icon.get(cp['status'], '•')} {cp['name']}: {cp['description']}")
+            st.info(f"{status_icon.get(cp.status, '•')} {cp.name}: {cp.description}")
         
         # Checkpoint progress bar
         checkpoints = agent_status["checkpoints"]
